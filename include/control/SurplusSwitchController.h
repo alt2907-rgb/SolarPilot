@@ -22,6 +22,7 @@ class SurplusSwitchController {
   bool isOn() const;
 
  private:
+  // Erwartet monotone Zeitbasis (z. B. millis()).
   static bool elapsedSince(uint32_t startMs, uint32_t durationMs,
                            uint32_t nowMs);
 

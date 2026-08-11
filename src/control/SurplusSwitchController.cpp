@@ -19,6 +19,8 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
       if (elapsedSince(onQualifiedSinceMs_, config_.switchOnDelayMs, nowMs)) {
         isOn_ = true;
         onQualificationActive_ = false;
+        offQualificationActive_ = false;
+        offQualifiedSinceMs_ = 0;
         output_.setState(true);
       }
     } else {
@@ -39,6 +41,8 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
     if (elapsedSince(offQualifiedSinceMs_, config_.switchOffDelayMs, nowMs)) {
       isOn_ = false;
       offQualificationActive_ = false;
+      onQualificationActive_ = false;
+      onQualifiedSinceMs_ = 0;
       output_.setState(false);
     }
   } else {
