@@ -152,6 +152,7 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
     return false;
   }
 
+  // responseLen enthält die komplette rohe UDP-Antwort inklusive AA55-Präfix.
   const uint16_t expectedChecksum = checksum(response + 2, responseLen - 4);
   const uint16_t responseChecksum = static_cast<uint16_t>(
       static_cast<uint16_t>(response[responseLen - 2]) |
