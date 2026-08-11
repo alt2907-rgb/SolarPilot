@@ -23,6 +23,7 @@ struct AppConfig {
 
   static constexpr uint16_t kGoodWeDiscoveryPort = 48899;
   static constexpr uint16_t kGoodWeRuntimePort = 8899;
+  static constexpr uint8_t kGoodWeModbusAddress = 0xF7;
 };
 
 }  // namespace solarpilot::config
