@@ -28,7 +28,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern.
 
 ## Build & Flash (PlatformIO)
 
-1. WLAN-Zugangsdaten in `/home/runner/work/SolarPilot/SolarPilot/include/config/AppConfig.h` setzen.
+1. `include/config/LocalCredentials.example.h` nach `include/config/LocalCredentials.h` kopieren und WLAN-Zugangsdaten dort setzen.
 2. Build: `pio run`
 3. Flash: `pio run -t upload`
 4. Monitor: `pio device monitor`

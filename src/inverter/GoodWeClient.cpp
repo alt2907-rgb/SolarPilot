@@ -1,6 +1,5 @@
 #include "inverter/GoodWeClient.h"
 
-#include <stdlib.h>
 #include <WiFi.h>
 
 #include "core/Logger.h"
@@ -10,10 +9,14 @@ constexpr char kDiscoveryRequest[] = "WIFIKIT-214028-READ";
 constexpr uint8_t kRuntimeRequest[] = {0xAA, 0x55, 0xC0, 0x7F, 0x01,
                                        0x06, 0x00, 0x02, 0x45};
 
-constexpr size_t kRuntimeResponseMinLength = 90;
 constexpr size_t kPayloadOffset = 7;
 constexpr size_t kPGridOffset = 38;
 constexpr size_t kGridDirectionOffset = 80;
+constexpr size_t kRuntimeResponseMinLength =
+    kPayloadOffset + kGridDirectionOffset + 1;
+constexpr uint32_t kRuntimeResponseTimeoutMs = 1200;
+constexpr uint8_t kGridDirectionExport = 1;
+constexpr uint8_t kGridDirectionImport = 2;
 }  // namespace
 
 namespace solarpilot::inverter {
@@ -82,7 +85,7 @@ bool GoodWeClient::requestRuntimeData(uint8_t* responseBuffer, size_t bufferSize
   udp_.endPacket();
 
   const uint32_t startMs = millis();
-  while ((millis() - startMs) < 1200) {
+  while ((millis() - startMs) < kRuntimeResponseTimeoutMs) {
     const int packetSize = udp_.parsePacket();
     if (packetSize <= 0) {
       delay(20);
@@ -114,8 +117,11 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
     return false;
   }
 
-  if (responseLen < kRuntimeResponseMinLength || responseLen < (kPayloadOffset + kGridDirectionOffset + 1)) {
+  if (responseLen < kRuntimeResponseMinLength) {
     core::Logger::warn("Antwort ist zu kurz für Netzleistungsdaten.");
+    return false;
+  }
+  if (responseLen < 2) {
     return false;
   }
 
@@ -126,9 +132,9 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
   }
 
   const uint16_t expectedChecksum = checksum(response, responseLen - 2);
-  const uint16_t responseChecksum =
-      static_cast<uint16_t>(response[responseLen - 2] << 8U) |
-      static_cast<uint16_t>(response[responseLen - 1]);
+  const uint16_t responseChecksum = static_cast<uint16_t>(
+      (static_cast<uint16_t>(response[responseLen - 2]) << 8U) |
+      static_cast<uint16_t>(response[responseLen - 1]));
   if (expectedChecksum != responseChecksum) {
     core::Logger::warn("Ungültige Checksumme in GoodWe-Antwort.");
     return false;
@@ -136,12 +142,16 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
 
   const size_t payloadPGridOffset = kPayloadOffset + kPGridOffset;
   const size_t payloadDirectionOffset = kPayloadOffset + kGridDirectionOffset;
-  const int16_t pgridRaw = readInt16(response, payloadPGridOffset);
-  const int8_t direction = static_cast<int8_t>(response[payloadDirectionOffset]);
+  const uint16_t pgridRaw = readUInt16(response, payloadPGridOffset);
+  const uint8_t direction = response[payloadDirectionOffset];
 
-  float signedPower = static_cast<float>(abs(pgridRaw));
-  if (direction == 2) {
+  // Positive Werte = Export ins Netz, negative Werte = Import aus dem Netz.
+  float signedPower = static_cast<float>(pgridRaw);
+  if (direction == kGridDirectionImport) {
     signedPower = -signedPower;
+  } else if (direction != kGridDirectionExport) {
+    core::Logger::warn("Unbekannter Netzrichtungswert in GoodWe-Antwort.");
+    return false;
   }
 
   gridPowerW = signedPower;
@@ -156,9 +166,9 @@ uint16_t GoodWeClient::checksum(const uint8_t* data, size_t len) {
   return static_cast<uint16_t>(sum & 0xFFFFU);
 }
 
-int16_t GoodWeClient::readInt16(const uint8_t* data, size_t offset) {
-  return static_cast<int16_t>((static_cast<uint16_t>(data[offset]) << 8U) |
-                              static_cast<uint16_t>(data[offset + 1]));
+uint16_t GoodWeClient::readUInt16(const uint8_t* data, size_t offset) {
+  return static_cast<uint16_t>((static_cast<uint16_t>(data[offset]) << 8U) |
+                               static_cast<uint16_t>(data[offset + 1]));
 }
 
 }  // namespace solarpilot::inverter

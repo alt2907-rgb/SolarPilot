@@ -54,11 +54,12 @@ void loop() {
     return;
   }
 
-  if ((millis() - lastReadMs) < AppConfig::kReadIntervalMs) {
+  const uint32_t nowMs = millis();
+  if ((nowMs - lastReadMs) < AppConfig::kReadIntervalMs) {
     delay(50);
     return;
   }
-  lastReadMs = millis();
+  lastReadMs = nowMs;
 
   float gridPowerW = 0.0F;
   if (goodWeClient.readGridPowerW(gridPowerW)) {
