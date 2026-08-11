@@ -60,7 +60,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 In `include/config/LocalCredentials.h`:
 
 ```cpp
-inline constexpr bool kLocalShellyOutputEnabled = false;
+// Kein Shelly-Block nötig → VirtualSocketOutput ist automatisch aktiv
 ```
 
 Beim Serial Monitor erscheint:
@@ -73,12 +73,15 @@ Beim Serial Monitor erscheint:
 
 ### Shelly Plug M Gen3 aktivieren
 
-In `include/config/LocalCredentials.h`:
+In `include/config/LocalCredentials.h` folgende Sektion ergänzen:
 
 ```cpp
+#define SOLARPILOT_SHELLY_CONFIGURED
+namespace solarpilot::config {
 inline constexpr bool kLocalShellyOutputEnabled = true;
 inline constexpr char kLocalShellyHost[] = "192.168.1.42";  // IP-Adresse des Shelly
 inline constexpr uint8_t kLocalShellySwitchId = 0;
+}  // namespace solarpilot::config
 ```
 
 Beim Serial Monitor erscheint:

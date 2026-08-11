@@ -8,9 +8,16 @@
 namespace solarpilot::config {
 inline constexpr char kLocalWifiSsid[] = "YOUR_WIFI_SSID";
 inline constexpr char kLocalWifiPassword[] = "YOUR_WIFI_PASSWORD";
-// Output mode: set to true to enable Shelly Plug M Gen3 control.
-// Default is false (VirtualSocketOutput) so flashing the firmware cannot
-// accidentally switch a real device before this is explicitly enabled.
+}  // namespace solarpilot::config
+#endif
+
+// Shelly defaults: applied when LocalCredentials.h does not define
+// SOLARPILOT_SHELLY_CONFIGURED. This keeps existing LocalCredentials.h files
+// (with only Wi-Fi credentials) backward-compatible without modification.
+// To opt in to Shelly control, define SOLARPILOT_SHELLY_CONFIGURED and set
+// the three kLocalShelly* constants in your LocalCredentials.h.
+#ifndef SOLARPILOT_SHELLY_CONFIGURED
+namespace solarpilot::config {
 inline constexpr bool kLocalShellyOutputEnabled = false;
 inline constexpr char kLocalShellyHost[] = "YOUR_SHELLY_IP";
 inline constexpr uint8_t kLocalShellySwitchId = 0;
