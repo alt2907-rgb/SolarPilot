@@ -132,6 +132,10 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
     return false;
   }
 
+  if (config::AppConfig::kHexDumpEnabled) {
+    printHexDump(response, responseLen);
+  }
+
   if (responseLen < kRuntimeResponseMinLength) {
     core::Logger::warn("Antwort ist zu kurz für Netzleistungsdaten.");
     return false;
@@ -187,6 +191,29 @@ uint16_t GoodWeClient::checksum(const uint8_t* data, size_t len) {
 int16_t GoodWeClient::readInt16(const uint8_t* data, size_t offset) {
   return static_cast<int16_t>((static_cast<uint16_t>(data[offset]) << 8U) |
                               static_cast<uint16_t>(data[offset + 1]));
+}
+
+void GoodWeClient::printHexDump(const uint8_t* data, size_t len) {
+  constexpr size_t kBytesPerRow = 16;
+  Serial.printf("[HexDump] GoodWe-Antwort (%u Byte):\n",
+                static_cast<unsigned>(len));
+  for (size_t i = 0; i < len; i += kBytesPerRow) {
+    Serial.printf("  %04X: ", static_cast<unsigned>(i));
+    const size_t rowEnd = (i + kBytesPerRow < len) ? i + kBytesPerRow : len;
+    for (size_t j = i; j < rowEnd; ++j) {
+      Serial.printf("%02X ", data[j]);
+    }
+    // Padding so ASCII column is always aligned
+    for (size_t j = rowEnd; j < i + kBytesPerRow; ++j) {
+      Serial.print("   ");
+    }
+    Serial.print(" |");
+    for (size_t j = i; j < rowEnd; ++j) {
+      const uint8_t b = data[j];
+      Serial.print((b >= 0x20U && b < 0x7FU) ? static_cast<char>(b) : '.');
+    }
+    Serial.println('|');
+  }
 }
 
 }  // namespace solarpilot::inverter
