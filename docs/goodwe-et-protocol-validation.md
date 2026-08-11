@@ -100,6 +100,14 @@ Wenn wir die unverified Punkte auf echter Hardware absichern wollen:
    - Netzleistungswert am Smart Meter / GoodWe-App notieren
    - prüfen, ob der signierte Wert in Watt und sein Vorzeichen dazu passen
 
+
+## Aktueller Status für die Regelungslogik
+
+- Auf der realen Zielhardware ist bestätigt: **positiver** Wert von `active_power`/`gridPowerW` entspricht Netzeinspeisung (PV-Überschuss).
+- Für Netzbezug ist das Vorzeichenverhalten auf dieser Installation noch **nicht abschließend verifiziert** (mögliche negative Werte vs. Annäherung an `0`).
+- Daher nutzt Milestone 2 bewusst eine export-basierte Schaltlogik, die **nicht** von negativen Importwerten abhängt.
+- Die aktuellen Schwellwerte und Verzögerungen (`>= 2000 W` für 15 s EIN, `<= 500 W` für 10 s AUS) sind **Testwerte** und in `AppConfig` konfigurierbar.
+
 ## Auswirkung auf Milestone 1
 
 Milestone 1 bleibt bewusst klein:
