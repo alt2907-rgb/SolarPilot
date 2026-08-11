@@ -17,6 +17,7 @@ class GoodWeClient final : public IInverterClient {
  private:
   static uint16_t checksum(const uint8_t* data, size_t len);
   static int16_t readInt16(const uint8_t* data, size_t offset);
+  static void printHexDump(const uint8_t* data, size_t len);
 
   bool requestRuntimeData(uint8_t* responseBuffer, size_t bufferSize,
                           size_t& responseLen);

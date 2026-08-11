@@ -24,6 +24,11 @@ struct AppConfig {
   static constexpr uint16_t kGoodWeDiscoveryPort = 48899;
   static constexpr uint16_t kGoodWeRuntimePort = 8899;
   static constexpr uint8_t kGoodWeModbusAddress = 0xF7;
+
+  // Diagnosemodus: Gibt die rohe GoodWe-Antwort als Hex-Dump über den
+  // seriellen Monitor aus. Für die Verifikation an echter Hardware auf
+  // true setzen; im Normalbetrieb auf false belassen.
+  static constexpr bool kHexDumpEnabled = false;
 };
 
 }  // namespace solarpilot::config
