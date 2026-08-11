@@ -6,6 +6,8 @@
 #include "core/WiFiManager.h"
 #include "inverter/GoodWeClient.h"
 #include "output/ConsoleOutput.h"
+#include "output/ISwitchOutput.h"
+#include "output/ShellyPlugOutput.h"
 #include "output/VirtualSocketOutput.h"
 
 using solarpilot::config::AppConfig;
@@ -16,6 +18,8 @@ using solarpilot::core::WiFiManager;
 using solarpilot::inverter::GoodWeClient;
 using solarpilot::inverter::InverterEndpoint;
 using solarpilot::output::ConsoleOutput;
+using solarpilot::output::ISwitchOutput;
+using solarpilot::output::ShellyPlugOutput;
 using solarpilot::output::VirtualSocketOutput;
 
 namespace {
@@ -24,12 +28,26 @@ GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
 ConsoleOutput consoleOutput;
 VirtualSocketOutput virtualSocketOutput;
+// shellyPlugOutput is constructed unconditionally but only used when
+// kShellyOutputEnabled is true. selectOutput() is the sole gatekeeper.
+// kShellyOutputEnabled is constexpr, so the unused branch is optimized away.
+ShellyPlugOutput shellyPlugOutput(AppConfig::kShellyHost,
+                                   AppConfig::kShellySwitchId,
+                                   AppConfig::kShellyHttpTimeoutMs);
+
+ISwitchOutput& selectOutput() {
+  if (AppConfig::kShellyOutputEnabled) {
+    return shellyPlugOutput;
+  }
+  return virtualSocketOutput;
+}
+
 SurplusSwitchController surplusSwitchController(
     SurplusSwitchConfig{AppConfig::kSurplusSwitchOnThresholdW,
                         AppConfig::kSurplusSwitchOffThresholdW,
                         AppConfig::kSurplusSwitchOnDelayMs,
                         AppConfig::kSurplusSwitchOffDelayMs},
-    virtualSocketOutput);
+    selectOutput());
 InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
@@ -39,6 +57,12 @@ void setup() {
   Logger::begin();
   delay(200);
   Logger::info("SolarPilot startet...");
+
+  if (AppConfig::kShellyOutputEnabled) {
+    Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
+  } else {
+    Logger::info("[CONFIG] Ausgabe: VirtualSocketOutput (Testmodus)");
+  }
 
   if (!wifiManager.connect(AppConfig::kWifiSsid, AppConfig::kWifiPassword,
                            AppConfig::kWifiConnectTimeoutMs)) {
@@ -57,7 +81,7 @@ void setup() {
   }
 
   inverterReady = true;
-  Logger::info("Milestone 2 aktiv: Netzleistung wird gelesen und simuliert geschaltet.");
+  Logger::info("Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
 }
 
 void loop() {
@@ -81,3 +105,4 @@ void loop() {
     Logger::warn("Netzleistung konnte nicht gelesen werden.");
   }
 }
+
