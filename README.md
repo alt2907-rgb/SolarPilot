@@ -2,13 +2,14 @@
 
 Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell technisch validiert für **GoodWe ET / ET Plus**.
 
-## Meilenstein 1 (implementiert)
+## Meilenstein 2 (implementiert)
 
 - WLAN verbinden
 - GoodWe im lokalen Netzwerk finden
 - Verbindung vorbereiten
 - aktuelle Netzleistung lesen
 - Werte über Serial Monitor ausgeben
+- simulierte Überschuss-Schaltung mit Hysterese und Zeitqualifikation
 
 ## Projektstruktur
 
@@ -37,3 +38,17 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 2. Build: `pio run`
 3. Flash: `pio run -t upload`
 4. Monitor: `pio device monitor`
+
+
+## Überschuss-Schaltlogik (Teststand)
+
+- **Verifiziert auf dieser Installation:** Positive `gridPowerW`-Werte bedeuten Netzeinspeisung (PV-Überschuss).
+- **Noch nicht verifiziert:** Bei Netzbezug ist aktuell unklar, ob negative Werte geliefert werden oder der Wert nur gegen `0 W` läuft.
+- **Aktuelle Testwerte (konfigurierbar in `AppConfig`)**:
+  - EIN ab `>= 2000 W` Export für mindestens `15 s`
+  - AUS ab `<= 500 W` Export für mindestens `10 s`
+  - Zwischen `500 W` und `2000 W` bleibt der Zustand unverändert (Hysterese)
+- Es wird **keine reale Last** geschaltet; nur ein virtueller Zustand mit Serial-Log:
+  - `[CONTROL] Virtuelle Steckdose EIN`
+  - `[CONTROL] Virtuelle Steckdose AUS`
+

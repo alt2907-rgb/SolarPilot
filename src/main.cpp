@@ -1,27 +1,39 @@
 #include <Arduino.h>
 
 #include "config/AppConfig.h"
+#include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
 #include "core/WiFiManager.h"
 #include "inverter/GoodWeClient.h"
 #include "output/ConsoleOutput.h"
+#include "output/VirtualSocketOutput.h"
 
 using solarpilot::config::AppConfig;
+using solarpilot::control::SurplusSwitchConfig;
+using solarpilot::control::SurplusSwitchController;
 using solarpilot::core::Logger;
 using solarpilot::core::WiFiManager;
 using solarpilot::inverter::GoodWeClient;
 using solarpilot::inverter::InverterEndpoint;
 using solarpilot::output::ConsoleOutput;
+using solarpilot::output::VirtualSocketOutput;
 
 namespace {
 WiFiManager wifiManager;
 GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
 ConsoleOutput consoleOutput;
+VirtualSocketOutput virtualSocketOutput;
+SurplusSwitchController surplusSwitchController(
+    SurplusSwitchConfig{AppConfig::kSurplusSwitchOnThresholdW,
+                        AppConfig::kSurplusSwitchOffThresholdW,
+                        AppConfig::kSurplusSwitchOnDelayMs,
+                        AppConfig::kSurplusSwitchOffDelayMs},
+    virtualSocketOutput);
 InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
-}
+}  // namespace
 
 void setup() {
   Logger::begin();
@@ -45,7 +57,7 @@ void setup() {
   }
 
   inverterReady = true;
-  Logger::info("Milestone 1 aktiv: Netzleistung wird zyklisch gelesen.");
+  Logger::info("Milestone 2 aktiv: Netzleistung wird gelesen und simuliert geschaltet.");
 }
 
 void loop() {
@@ -64,6 +76,7 @@ void loop() {
   float gridPowerW = 0.0F;
   if (goodWeClient.readGridPowerW(gridPowerW)) {
     consoleOutput.printGridPower(gridPowerW);
+    surplusSwitchController.update(gridPowerW, nowMs);
   } else {
     Logger::warn("Netzleistung konnte nicht gelesen werden.");
   }

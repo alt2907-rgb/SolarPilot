@@ -29,6 +29,12 @@ struct AppConfig {
   // seriellen Monitor aus. Für die Verifikation an echter Hardware auf
   // true setzen; im Normalbetrieb auf false belassen.
   static constexpr bool kHexDumpEnabled = false;
+
+  // Testwerte für Milestone 2 (simulierte Überschuss-Schaltung)
+  static constexpr float kSurplusSwitchOnThresholdW = 200.0F;
+  static constexpr float kSurplusSwitchOffThresholdW = 100.0F;
+  static constexpr uint32_t kSurplusSwitchOnDelayMs = 15000;
+  static constexpr uint32_t kSurplusSwitchOffDelayMs = 10000;
 };
 
 }  // namespace solarpilot::config
