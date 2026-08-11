@@ -28,6 +28,9 @@ GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
 ConsoleOutput consoleOutput;
 VirtualSocketOutput virtualSocketOutput;
+// shellyPlugOutput is constructed unconditionally but only used when
+// kShellyOutputEnabled is true. selectOutput() is the sole gatekeeper.
+// kShellyOutputEnabled is constexpr, so the unused branch is optimized away.
 ShellyPlugOutput shellyPlugOutput(AppConfig::kShellyHost,
                                    AppConfig::kShellySwitchId,
                                    AppConfig::kShellyHttpTimeoutMs);
