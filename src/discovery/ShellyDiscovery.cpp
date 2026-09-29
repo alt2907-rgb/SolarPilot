@@ -27,8 +27,10 @@ size_t ShellyDiscovery::discover(ShellyDeviceInfo* results, size_t maxResults,
     return 0;
   }
 
-  if (!MDNS.begin("solarpilot")) {
-    core::Logger::warn("[SHELLY-DISCOVERY] mDNS konnte nicht gestartet werden.");
+  if (!ensureMdnsStarted()) {
+    core::Logger::warn(
+        "[SHELLY-DISCOVERY] Übersprungen: mDNS nicht verfügbar (WLAN besteht "
+        "weiterhin).");
     return 0;
   }
 
@@ -61,6 +63,27 @@ size_t ShellyDiscovery::discover(ShellyDeviceInfo* results, size_t maxResults,
   core::Logger::infof("[SHELLY-DISCOVERY] %u Shelly-Gerät(e) per mDNS gefunden.",
                       static_cast<unsigned>(count));
   return count;
+}
+
+bool ShellyDiscovery::ensureMdnsStarted() {
+  if (mdnsStarted_) {
+    return true;
+  }
+
+  // mdns_init() (called by MDNS.begin()) must only run once for the
+  // lifetime of the WiFi connection; calling it again while already
+  // initialized fails and was observed to destabilize UDP handling enough
+  // to also break the unrelated GoodWe broadcast discovery right after.
+  if (!MDNS.begin("solarpilot")) {
+    core::Logger::warn(
+        "[SHELLY-DISCOVERY] mDNS-Start fehlgeschlagen (WLAN ist verbunden, "
+        "es liegt an mDNS/Discovery, nicht am WLAN).");
+    return false;
+  }
+
+  mdnsStarted_ = true;
+  core::Logger::info("[SHELLY-DISCOVERY] mDNS einmalig gestartet.");
+  return true;
 }
 
 bool ShellyDiscovery::fetchDeviceInfo(ShellyDeviceInfo& device,

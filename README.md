@@ -7,8 +7,9 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - Automatische Erkennung kompatibler Shelly-Geräte im lokalen Netzwerk per mDNS (`_shelly._tcp`)
 - Für gefundene Geräte lokaler Abruf von Geräteinformationen über Shelly RPC `Shelly.GetDeviceInfo` (HTTP, lokal)
 - Erfasst: IP/Host, Geräte-ID, MAC-Adresse, Modell und Generation (soweit vom Gerät geliefert)
-- Rein informativ: läuft einmalig beim Start nach erfolgreicher WLAN-Verbindung, gibt die gefundenen Geräte im Serial Monitor aus
+- Rein informativ: läuft einmalig beim Start **nach** erfolgreicher GoodWe-Initialisierung, gibt die gefundenen Geräte im Serial Monitor aus
 - Entwicklungs-Testhilfe: `D` (oder `d`) über den Serial Monitor senden führt die Discovery jederzeit erneut aus – kein periodisches Polling, keine Auswirkung auf GoodWe-/Surplus-Ablauf
+- **Robustheit:** mDNS (`MDNS.begin()`) wird pro WLAN-Verbindung nur genau einmal initialisiert (nicht bei jedem Discovery-Aufruf erneut) – wiederholtes Initialisieren hat sich auf echter Hardware als Ursache für sporadisch fehlschlagende GoodWe-Broadcast-Discovery erwiesen. GoodWe wird beim Start außerdem zuerst initialisiert; die Shelly-Discovery folgt erst danach und entkoppelt
 - Kein Shelly Cloud, kein MQTT, keine Internetabhängigkeit
 - Keine Weboberfläche, keine dauerhafte Speicherung/Konfiguration und **keine** automatische Umschaltung von `ShellyPlugOutput` in diesem Schritt
 - Die bestehende feste Shelly-IP-Konfiguration (Meilenstein 3) bleibt unverändert nutzbar; Discovery ist rein additiv
@@ -48,6 +49,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - **`ISwitchOutput`-Abstraktion**: `SurplusSwitchController` kennt weder `VirtualSocketOutput` noch `ShellyPlugOutput` – die Auswahl erfolgt in `main.cpp` anhand der Konfiguration.
 - **`ShellyPlugOutput` für mehrere Instanzen ausgelegt**: Host, Switch-ID und Timeout sind Konstruktorparameter; mehrere Shelly-Geräte können später ohne Code-Änderungen instanziiert werden.
 - **`ShellyDiscovery` als eigenständiges, dependency-freies Modul (Meilenstein 4A)**: liefert reine `ShellyDeviceInfo`-Daten (IP, Host, ID, MAC, Modell, Generation) ohne Kenntnis von `ShellyPlugOutput` oder einer Weboberfläche – dadurch später direkt für ein "Gerät hinzufügen"-Flow in einer Web-UI wiederverwendbar, ohne dass die Discovery-Logik geändert werden muss.
+- **mDNS-Lebenszyklus explizit verwaltet**: `ShellyDiscovery` merkt sich intern, ob `MDNS.begin()` bereits erfolgreich lief, und startet mDNS nie erneut (auch nicht über mehrere manuelle `D`-Trigger hinweg). `MDNSResponder::begin()` ruft `mdns_init()` auf, das nicht mehrfach sicher aufrufbar ist; wiederholte Aufrufe destabilisierten auf echter Hardware auch die unabhängige GoodWe-UDP-Broadcast-Discovery. Setup-Reihenfolge in `main.cpp`: WLAN → GoodWe-Discovery/Connect zuerst → danach erst die informative Shelly-Discovery, damit ein mDNS-/RPC-Fehler die GoodWe-Initialisierung nie verzögern oder verhindern kann.
 
 ## GoodWe-Protokollvalidierung
 
@@ -126,7 +128,13 @@ Kommunikationsfehler werden klar geloggt, z. B.:
 
 1. Mindestens ein Shelly-Gerät (Gen2/Gen3, z. B. Plug S/Plug M) im selben lokalen Netzwerk/Subnetz wie der ESP32-C3 in Betrieb nehmen.
 2. Firmware flashen, Serial Monitor öffnen (`115200` Baud).
-3. Nach erfolgreicher WLAN-Verbindung erscheint automatisch eine Ausgabe wie:
+3. Nach erfolgreicher WLAN-Verbindung initialisiert SolarPilot zuerst GoodWe (Discovery + Verbindung). Erst danach läuft einmalig die Shelly-Discovery; im Log erscheint zuerst genau einmal:
+
+   ```
+   [INFO] [SHELLY-DISCOVERY] mDNS einmalig gestartet.
+   ```
+
+   gefolgt vom Ergebnis, z. B.:
 
    ```
    [INFO] [SHELLY-DISCOVERY] 1 Shelly-Gerät(e) per mDNS gefunden.
@@ -135,10 +143,11 @@ Kommunikationsfehler werden klar geloggt, z. B.:
    [INFO]        id=shellyplug-s-XXXXXX mac=XXXXXXXXXXXX model=SNPL-00112EU gen=2
    ```
 
-4. Ist kein Shelly-Gerät im Netzwerk erreichbar, erscheint stattdessen `[SHELLY-DISCOVERY] Kein Shelly-Gerät im Netzwerk gefunden.` und SolarPilot fährt normal mit GoodWe-Discovery und Überschusssteuerung fort.
-5. Wird ein Gerät per mDNS gefunden, aber der lokale RPC-Abruf (`Shelly.GetDeviceInfo`) schlägt fehl (z. B. Zeitüberschreitung), erscheint `Geräteinfo nicht abrufbar (nur mDNS-Daten).`; IP/Host aus dem mDNS-Ergebnis werden trotzdem angezeigt.
+4. Ist kein Shelly-Gerät im Netzwerk erreichbar, erscheinen stattdessen `[SHELLY-DISCOVERY] Keine Shelly-Geräte per mDNS gefunden.` und `[SHELLY-DISCOVERY] Kein Shelly-Gerät im Netzwerk gefunden.`, und SolarPilot fährt normal mit dem Regelbetrieb fort. GoodWe war zu diesem Zeitpunkt bereits erfolgreich initialisiert, unabhängig vom Discovery-Ergebnis.
+5. Wird ein Gerät per mDNS gefunden, aber der lokale RPC-Abruf (`Shelly.GetDeviceInfo`) schlägt fehl (z. B. Zeitüberschreitung/`HTTP -1`), erscheint `Geräteinfo nicht abrufbar (nur mDNS-Daten).`; IP/Host aus dem mDNS-Ergebnis werden trotzdem angezeigt. GoodWe-Kommunikation und Überschusssteuerung laufen davon unberührt weiter.
 6. Zur Kontrolle: Die bereits konfigurierte feste `kLocalShellyHost`-Schaltlogik aus Meilenstein 3 funktioniert unverändert parallel weiter, unabhängig vom Discovery-Ergebnis.
-7. **Erneute Discovery ohne Neustart:** Im Serial Monitor den Buchstaben `D` (oder `d`) senden und Enter/Send drücken. Da die Ausgabe unmittelbar nach dem Neustart über USB CDC leicht verpasst wird, kann so jederzeit erneut getestet werden, ohne das Board neu zu flashen oder zurückzusetzen. Es läuft weiterhin keine automatische periodische Discovery – der Trigger ist rein manuell.
+7. **Erneute Discovery ohne Neustart:** Im Serial Monitor den Buchstaben `D` (oder `d`) senden und Enter/Send drücken. Da die Ausgabe unmittelbar nach dem Neustart über USB CDC leicht verpasst wird, kann so jederzeit erneut getestet werden, ohne das Board neu zu flashen oder zurückzusetzen. `[SHELLY-DISCOVERY] mDNS einmalig gestartet.` erscheint dabei **nicht** erneut (mDNS läuft bereits) – nur das Discovery-Ergebnis wird neu ausgegeben. Es läuft weiterhin keine automatische periodische Discovery – der Trigger ist rein manuell.
+8. **Diagnose bei Problemen:** Erscheint `[SHELLY-DISCOVERY] Übersprungen: kein WLAN verbunden.`, liegt das Problem am WLAN selbst. Erscheint dagegen `[SHELLY-DISCOVERY] mDNS-Start fehlgeschlagen (WLAN ist verbunden, es liegt an mDNS/Discovery, nicht am WLAN).`, ist WLAN in Ordnung und nur mDNS/Discovery betroffen – die GoodWe-Kommunikation ist davon nicht betroffen, da sie zu diesem Zeitpunkt bereits läuft.
 
 ## Überschuss-Schaltlogik
 
