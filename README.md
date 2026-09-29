@@ -53,6 +53,8 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 3. Flash: `pio run -t upload`
 4. Monitor: `pio device monitor`
 
+Für den Windows-Serial-Monitor und die Fehlersuche nach einer längeren Pause siehe [docs/development-runbook.md](docs/development-runbook.md) und den Helfer [tools/serial-monitor.ps1](tools/serial-monitor.ps1).
+
 ## Ausgabemodus konfigurieren
 
 ### Testmodus (Standard, kein reales Gerät)

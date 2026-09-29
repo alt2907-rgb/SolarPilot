@@ -1,3 +1,6 @@
 .pio/
 .vscode/
+!.vscode/
+.vscode/*
+!.vscode/tasks.json
 include/config/LocalCredentials.h
