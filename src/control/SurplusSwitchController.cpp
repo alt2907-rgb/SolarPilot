@@ -1,5 +1,7 @@
 #include "control/SurplusSwitchController.h"
 
+#include "core/Logger.h"
+
 namespace solarpilot::control {
 
 SurplusSwitchController::SurplusSwitchController(
@@ -7,6 +9,9 @@ SurplusSwitchController::SurplusSwitchController(
     : config_(config), output_(output) {}
 
 void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
+  hasValidReading_ = true;
+  lastValidReadMs_ = nowMs;
+
   if (!isOn_) {
     offQualificationActive_ = false;
 
@@ -51,6 +56,31 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
 }
 
 bool SurplusSwitchController::isOn() const { return isOn_; }
+
+void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
+  if (!isOn_ || !hasValidReading_) {
+    return;
+  }
+
+  if (!elapsedSince(lastValidReadMs_, config_.failSafeTimeoutMs, nowMs)) {
+    return;
+  }
+
+  core::Logger::infof(
+      "[SAFETY] Keine gültigen GoodWe-Daten seit %u s – Ausgang wird ausgeschaltet.",
+      static_cast<unsigned>(config_.failSafeTimeoutMs / 1000U));
+
+  isOn_ = false;
+  resetQualificationState();
+  output_.setState(false);
+}
+
+void SurplusSwitchController::resetQualificationState() {
+  onQualificationActive_ = false;
+  offQualificationActive_ = false;
+  onQualifiedSinceMs_ = 0;
+  offQualifiedSinceMs_ = 0;
+}
 
 bool SurplusSwitchController::elapsedSince(uint32_t startMs,
                                            uint32_t durationMs,

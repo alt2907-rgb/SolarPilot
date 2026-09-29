@@ -59,6 +59,11 @@ struct AppConfig {
   static constexpr uint32_t kSurplusSwitchOnDelayMs = 15000;
   static constexpr uint32_t kSurplusSwitchOffDelayMs = 10000;
 
+  // Sicherheits-Fail-safe: Ausgang zwangsweise AUS, wenn er eingeschaltet ist
+  // und seit diesem Zeitraum keine gültige GoodWe-Netzleistung mehr gelesen
+  // werden konnte. Bewusst gut sichtbar/kurz gewählt für die Testphase.
+  static constexpr uint32_t kSurplusSwitchFailSafeTimeoutMs = 30000;
+
   // Output: Shelly Plug M Gen3 (Milestone 3)
   // Konfiguration erfolgt in LocalCredentials.h (nicht ins Repository).
   static constexpr bool kShellyOutputEnabled = kLocalShellyOutputEnabled;
