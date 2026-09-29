@@ -46,8 +46,8 @@ struct AppConfig {
   // Testwerte für Milestone 2 (simulierte Überschuss-Schaltung)
   // Hinweis: Diese 200 W / 100 W-Werte sind temporäre Testwerte und werden
   // für den Produktiveinsatz angepasst.
-  static constexpr float kSurplusSwitchOnThresholdW = 200.0F;
-  static constexpr float kSurplusSwitchOffThresholdW = 100.0F;
+  static constexpr float kSurplusSwitchOnThresholdW = 50.0F;
+  static constexpr float kSurplusSwitchOffThresholdW = 20.0F;
   static constexpr uint32_t kSurplusSwitchOnDelayMs = 15000;
   static constexpr uint32_t kSurplusSwitchOffDelayMs = 10000;
 
