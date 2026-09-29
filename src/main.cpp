@@ -94,6 +94,7 @@ void setup() {
   Logger::begin();
   delay(200);
   Logger::info("SolarPilot startet...");
+  Logger::info("D = Shelly-Discovery erneut ausführen");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
@@ -123,7 +124,22 @@ void setup() {
   Logger::info("Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
 }
 
+// Manueller Entwicklungs-Trigger (Milestone 4A): 'd'/'D' über Serial löst
+// erneut runShellyDiscoveryOnce() aus. Kein periodisches Polling, keine
+// Auswirkung auf GoodWe-/Surplus-Ablauf in loop().
+void handleSerialDiscoveryTrigger() {
+  while (Serial.available() > 0) {
+    const int incoming = Serial.read();
+    if (incoming == 'd' || incoming == 'D') {
+      Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
+      runShellyDiscoveryOnce();
+    }
+  }
+}
+
 void loop() {
+  handleSerialDiscoveryTrigger();
+
   if (!inverterReady || !wifiManager.isConnected()) {
     delay(1000);
     return;

@@ -8,6 +8,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - Für gefundene Geräte lokaler Abruf von Geräteinformationen über Shelly RPC `Shelly.GetDeviceInfo` (HTTP, lokal)
 - Erfasst: IP/Host, Geräte-ID, MAC-Adresse, Modell und Generation (soweit vom Gerät geliefert)
 - Rein informativ: läuft einmalig beim Start nach erfolgreicher WLAN-Verbindung, gibt die gefundenen Geräte im Serial Monitor aus
+- Entwicklungs-Testhilfe: `D` (oder `d`) über den Serial Monitor senden führt die Discovery jederzeit erneut aus – kein periodisches Polling, keine Auswirkung auf GoodWe-/Surplus-Ablauf
 - Kein Shelly Cloud, kein MQTT, keine Internetabhängigkeit
 - Keine Weboberfläche, keine dauerhafte Speicherung/Konfiguration und **keine** automatische Umschaltung von `ShellyPlugOutput` in diesem Schritt
 - Die bestehende feste Shelly-IP-Konfiguration (Meilenstein 3) bleibt unverändert nutzbar; Discovery ist rein additiv
@@ -137,6 +138,7 @@ Kommunikationsfehler werden klar geloggt, z. B.:
 4. Ist kein Shelly-Gerät im Netzwerk erreichbar, erscheint stattdessen `[SHELLY-DISCOVERY] Kein Shelly-Gerät im Netzwerk gefunden.` und SolarPilot fährt normal mit GoodWe-Discovery und Überschusssteuerung fort.
 5. Wird ein Gerät per mDNS gefunden, aber der lokale RPC-Abruf (`Shelly.GetDeviceInfo`) schlägt fehl (z. B. Zeitüberschreitung), erscheint `Geräteinfo nicht abrufbar (nur mDNS-Daten).`; IP/Host aus dem mDNS-Ergebnis werden trotzdem angezeigt.
 6. Zur Kontrolle: Die bereits konfigurierte feste `kLocalShellyHost`-Schaltlogik aus Meilenstein 3 funktioniert unverändert parallel weiter, unabhängig vom Discovery-Ergebnis.
+7. **Erneute Discovery ohne Neustart:** Im Serial Monitor den Buchstaben `D` (oder `d`) senden und Enter/Send drücken. Da die Ausgabe unmittelbar nach dem Neustart über USB CDC leicht verpasst wird, kann so jederzeit erneut getestet werden, ohne das Board neu zu flashen oder zurückzusetzen. Es läuft weiterhin keine automatische periodische Discovery – der Trigger ist rein manuell.
 
 ## Überschuss-Schaltlogik
 
