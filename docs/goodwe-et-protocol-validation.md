@@ -118,3 +118,34 @@ Milestone 1 bleibt bewusst klein:
 - keine zusätzliche Bibliothek
 
 Ziel bleibt ausschließlich: **Netzleistung des GoodWe GW8KN-ET Plus zuverlässig lokal lesen**.
+
+## Laufzeitkommunikation: Retry- und Diagnoseverhalten
+
+Auf realer Hardware wurde beobachtet, dass Laufzeit-Requests (alle 5 s) gelegentlich in Serie mit
+`Keine Laufzeitdaten vom Wechselrichter erhalten.` timeoutn und danach wieder normal funktionieren. Die
+Protokollkonstanten (Ports, Modbus-Adresse `0xF7`, Startregister `0x891C`, Registeranzahl `125`,
+Netzleistungsregister `35140`, CRC, Vorzeichenkonvention) sind davon **nicht** betroffen und wurden nicht verändert.
+
+`GoodWeClient` (`include/inverter/GoodWeClient.h`, `src/inverter/GoodWeClient.cpp`) enthält dafür:
+
+- **Verwerfen veralteter UDP-Pakete**: Vor jedem neuen Laufzeit-Request leert `discardStalePackets()` die
+  Empfangswarteschlange, damit eine verspätet eingetroffene alte Antwort nicht fälschlich der neuen Anfrage
+  zugeordnet wird.
+- **Begrenzte Wiederholversuche**: Ein Lesezyklus (`readGridPowerW()`) versucht maximal
+  `AppConfig::kGoodWeRuntimeMaxAttempts` (Standard: 3) Requests. Zwischen Versuchen wartet er
+  `AppConfig::kGoodWeRuntimeRetryDelayMs` (Standard: 150 ms), um kein Flooding zu erzeugen. Das reguläre
+  5-Sekunden-Polling in `main.cpp` bleibt unverändert; Retries passieren ausschließlich *innerhalb* eines
+  Lesezyklus bei Timeout oder unbrauchbarem Paket.
+- **Unterschiedene Diagnosefälle**: Jeder Versuch wird intern als einer von
+  `kSendFailed` (UDP-Sendefehler), `kTimeout` (keine Antwort innerhalb `kRuntimeResponseTimeoutMs`),
+  `kInvalidPacket` (Paket empfangen, aber zu kurz/falscher Header/falsche Länge/ungültige CRC) oder
+  `kSuccess` klassifiziert. Bei einem Retry wird die Versuchsnummer und der vorherige Fehlergrund geloggt;
+  ein erfolgreicher Read nach Retry wird explizit vermerkt.
+- **Kompakte Statistik statt Web-UI**: `GoodWeClient` zählt `successfulReads_`, `failedReadCycles_` und
+  `totalRetryAttempts_` und loggt alle `AppConfig::kGoodWeStatsLogIntervalReads` erfolgreiche Reads eine
+  Zusammenfassung – nicht bei jedem einzelnen erfolgreichen Read.
+
+Damit lässt sich anhand der Logs unterscheiden, ob der reale Wechselrichter nicht antwortet (Timeout),
+ob Pakete ankommen aber ungültig sind, oder ob es sich um ein lokales UDP-Handling-Problem handelt
+(Hinweis: viele verworfene veraltete Pakete vor einer Anfrage).
+
