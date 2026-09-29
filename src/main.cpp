@@ -4,6 +4,8 @@
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
 #include "core/WiFiManager.h"
+#include "discovery/ShellyDeviceInfo.h"
+#include "discovery/ShellyDiscovery.h"
 #include "inverter/GoodWeClient.h"
 #include "output/ConsoleOutput.h"
 #include "output/ISwitchOutput.h"
@@ -15,6 +17,8 @@ using solarpilot::control::SurplusSwitchConfig;
 using solarpilot::control::SurplusSwitchController;
 using solarpilot::core::Logger;
 using solarpilot::core::WiFiManager;
+using solarpilot::discovery::ShellyDeviceInfo;
+using solarpilot::discovery::ShellyDiscovery;
 using solarpilot::inverter::GoodWeClient;
 using solarpilot::inverter::InverterEndpoint;
 using solarpilot::output::ConsoleOutput;
@@ -51,6 +55,39 @@ SurplusSwitchController surplusSwitchController(
 InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
+
+ShellyDiscovery shellyDiscovery;
+
+// Milestone 4A: informative, one-shot mDNS discovery. Never switches
+// shellyPlugOutput automatically and never blocks GoodWe/Surplus setup;
+// on any failure it just logs and returns.
+void runShellyDiscoveryOnce() {
+  ShellyDeviceInfo devices[AppConfig::kShellyDiscoveryMaxDevices];
+  const size_t count = shellyDiscovery.discover(
+      devices, AppConfig::kShellyDiscoveryMaxDevices,
+      AppConfig::kShellyDiscoveryMdnsTimeoutMs,
+      AppConfig::kShellyDiscoveryHttpTimeoutMs);
+
+  if (count == 0) {
+    Logger::info("[SHELLY-DISCOVERY] Kein Shelly-Gerät im Netzwerk gefunden.");
+    return;
+  }
+
+  Logger::infof("[SHELLY-DISCOVERY] %u Gerät(e) gefunden:",
+               static_cast<unsigned>(count));
+  for (size_t i = 0; i < count; ++i) {
+    const ShellyDeviceInfo& device = devices[i];
+    Logger::infof("  [%u] %s (%s)", static_cast<unsigned>(i + 1),
+                 device.hostname.c_str(), device.ip.toString().c_str());
+    if (device.infoRetrieved) {
+      Logger::infof("       id=%s mac=%s model=%s gen=%s", device.id.c_str(),
+                   device.mac.c_str(), device.model.c_str(),
+                   device.generation.c_str());
+    } else {
+      Logger::info("       Geräteinfo nicht abrufbar (nur mDNS-Daten).");
+    }
+  }
+}
 }  // namespace
 
 void setup() {
@@ -69,6 +106,8 @@ void setup() {
     Logger::error("Setup abgebrochen: WLAN nicht verfügbar.");
     return;
   }
+
+  runShellyDiscoveryOnce();
 
   if (!goodWeClient.discover(inverter, AppConfig::kInverterDiscoveryTimeoutMs)) {
     Logger::error("Setup abgebrochen: GoodWe nicht gefunden.");

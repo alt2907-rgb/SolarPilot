@@ -65,6 +65,13 @@ struct AppConfig {
   static constexpr const char* kShellyHost = kLocalShellyHost;
   static constexpr uint8_t kShellySwitchId = kLocalShellySwitchId;
   static constexpr uint32_t kShellyHttpTimeoutMs = 3000;
+
+  // Milestone 4A: einmalige, rein informative Shelly-mDNS-Discovery beim
+  // Start. Beeinflusst nicht die feste kShellyHost-Konfiguration oben und
+  // schaltet keinen Ausgang automatisch um.
+  static constexpr uint32_t kShellyDiscoveryMdnsTimeoutMs = 3000;
+  static constexpr uint32_t kShellyDiscoveryHttpTimeoutMs = 2000;
+  static constexpr uint8_t kShellyDiscoveryMaxDevices = 8;
 };
 
 }  // namespace solarpilot::config
