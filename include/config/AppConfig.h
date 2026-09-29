@@ -11,14 +11,13 @@ inline constexpr char kLocalWifiPassword[] = "YOUR_WIFI_PASSWORD";
 }  // namespace solarpilot::config
 #endif
 
-// Shelly defaults: applied when LocalCredentials.h does not define
-// SOLARPILOT_SHELLY_CONFIGURED. This keeps existing LocalCredentials.h files
-// (with only Wi-Fi credentials) backward-compatible without modification.
-// To opt in to Shelly control, define SOLARPILOT_SHELLY_CONFIGURED and set
-// the three kLocalShelly* constants in your LocalCredentials.h.
+// Shelly defaults: the output is enabled for the current hardware-test stage,
+// but the private host stays in LocalCredentials.h. Existing local
+// configurations can override these values by defining
+// SOLARPILOT_SHELLY_CONFIGURED and the three kLocalShelly* constants.
 #ifndef SOLARPILOT_SHELLY_CONFIGURED
 namespace solarpilot::config {
-inline constexpr bool kLocalShellyOutputEnabled = false;
+inline constexpr bool kLocalShellyOutputEnabled = true;
 inline constexpr char kLocalShellyHost[] = "YOUR_SHELLY_IP";
 inline constexpr uint8_t kLocalShellySwitchId = 0;
 }  // namespace solarpilot::config
@@ -59,8 +58,8 @@ struct AppConfig {
   static constexpr uint32_t kSurplusSwitchOnDelayMs = 15000;
   static constexpr uint32_t kSurplusSwitchOffDelayMs = 10000;
 
-  // Output: Shelly Plug M Gen3 (Milestone 3)
-  // Konfiguration erfolgt in LocalCredentials.h (nicht ins Repository).
+  // Output: Shelly Plug M Gen3 (Milestone 3); der lokale Host wird nicht
+  // versioniert und kann in LocalCredentials.h konfiguriert werden.
   static constexpr bool kShellyOutputEnabled = kLocalShellyOutputEnabled;
   static constexpr const char* kShellyHost = kLocalShellyHost;
   static constexpr uint8_t kShellySwitchId = kLocalShellySwitchId;

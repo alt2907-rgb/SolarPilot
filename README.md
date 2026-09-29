@@ -18,8 +18,8 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - Lokale Steuerung eines **Shelly Plug M Gen3** über WLAN/LAN
 - Kein Shelly Cloud-Konto erforderlich, kein MQTT
 - Steuerung per lokalem Shelly Gen3 RPC/HTTP-API (`Switch.Set`)
-- `VirtualSocketOutput` bleibt als sicherer Testmodus erhalten
-- Standardmäßig ist VirtualSocketOutput aktiv – erst nach expliziter Konfiguration wird ein reales Gerät geschaltet
+- `VirtualSocketOutput` bleibt als Testmodus erhalten
+- Für den aktuellen Hardwaretest ist `ShellyPlugOutput` standardmäßig ausgewählt; die private Shelly-IP wird nicht versioniert und kann lokal in `LocalCredentials.h` gesetzt werden
 
 ## Meilenstein 2 (implementiert)
 
@@ -70,34 +70,22 @@ Für den Windows-Serial-Monitor und die Fehlersuche nach einer längeren Pause s
 
 ## Ausgabemodus konfigurieren
 
-### Testmodus (Standard, kein reales Gerät)
+### Shelly Plug M Gen3 (Standard für den aktuellen Hardwaretest)
 
-In `include/config/LocalCredentials.h`:
+Die Shelly-Ausgabe ist im Repository standardmäßig aktiviert. Die lokale Shelly-IP bleibt in `include/config/LocalCredentials.h`; vorhandene lokale Konfigurationen mit `SOLARPILOT_SHELLY_CONFIGURED` überschreiben weiterhin die Standardwerte.
 
-```cpp
-// Kein Shelly-Block nötig → VirtualSocketOutput ist automatisch aktiv
-```
-
-Beim Serial Monitor erscheint:
-
-```
-[CONFIG] Ausgabe: VirtualSocketOutput (Testmodus)
-[CONTROL] Virtuelle Steckdose EIN
-[CONTROL] Virtuelle Steckdose AUS
-```
-
-### Shelly Plug M Gen3 aktivieren
-
-In `include/config/LocalCredentials.h` folgende Sektion ergänzen:
+Falls die lokale Konfiguration noch keinen Shelly-Block enthält, den folgenden Block mit der lokalen IP ergänzen:
 
 ```cpp
 #define SOLARPILOT_SHELLY_CONFIGURED
 namespace solarpilot::config {
 inline constexpr bool kLocalShellyOutputEnabled = true;
-inline constexpr char kLocalShellyHost[] = "192.168.1.42";  // IP-Adresse des Shelly
+inline constexpr char kLocalShellyHost[] = "YOUR_SHELLY_IP";
 inline constexpr uint8_t kLocalShellySwitchId = 0;
 }  // namespace solarpilot::config
 ```
+
+Für den bisherigen virtuellen Testmodus kann `kLocalShellyOutputEnabled` in dieser lokalen Konfiguration auf `false` gesetzt werden.
 
 Beim Serial Monitor erscheint:
 
@@ -110,14 +98,14 @@ Beim Serial Monitor erscheint:
 Kommunikationsfehler werden klar geloggt, z. B.:
 
 ```
-[SHELLY] Kommunikationsfehler: HTTP -1 (URL: http://192.168.1.42/rpc/Switch.Set?id=0&on=true)
+[SHELLY] Kommunikationsfehler: HTTP -1 (URL: http://YOUR_SHELLY_IP/rpc/Switch.Set?id=0&on=true)
 ```
 
 ### Shelly Plug M Gen3 – Hardwaretest-Prozedur
 
 1. Shelly Plug M Gen3 im lokalen Netzwerk in Betrieb nehmen und IP-Adresse ermitteln.
 2. Erreichbarkeit prüfen: `http://<IP>/rpc/Switch.GetStatus?id=0` im Browser aufrufen.
-3. IP in `LocalCredentials.h` eintragen und `kLocalShellyOutputEnabled = true` setzen.
+3. Falls noch nicht vorhanden, IP in `LocalCredentials.h` eintragen; `kLocalShellyOutputEnabled` ist standardmäßig aktiviert.
 4. Firmware flashen, Serial Monitor öffnen.
 5. Beim ersten Überschreiten der EIN-Schwelle (nach Ablauf der Qualifikationszeit) erscheint `[SHELLY] Steckdose EIN` und das Relais des Shelly schaltet.
 6. Bei Unterschreiten der AUS-Schwelle erscheint `[SHELLY] Steckdose AUS`.
@@ -147,4 +135,3 @@ Kommunikationsfehler werden klar geloggt, z. B.:
   - EIN ab `>= 200 W` Export für mindestens `15 s`
   - AUS ab `<= 100 W` Export für mindestens `10 s`
   - Zwischen `100 W` und `200 W` bleibt der Zustand unverändert (Hysterese)
-

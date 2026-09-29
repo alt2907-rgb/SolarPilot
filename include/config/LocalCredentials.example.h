@@ -6,11 +6,11 @@ inline constexpr char kLocalWifiPassword[] = "YOUR_WIFI_PASSWORD";
 }  // namespace solarpilot::config
 
 // -----------------------------------------------------------------------
-// Shelly Plug M Gen3 – lokale LAN-Steuerung (Milestone 3, optional)
+// Shelly Plug M Gen3 – lokale LAN-Steuerung (Milestone 3)
 //
-// Ohne diese Sektion baut das Projekt mit VirtualSocketOutput (Testmodus).
-// Zur Aktivierung der echten Steckdose diese Sektion einkommentieren,
-// SOLARPILOT_SHELLY_CONFIGURED definieren und die IP-Adresse eintragen.
+// Die Shelly-Ausgabe ist im aktuellen Entwicklungsstand standardmäßig aktiv.
+// Den privaten Host bei Bedarf lokal setzen, indem diese Sektion
+// einkommentiert und SOLARPILOT_SHELLY_CONFIGURED definiert wird.
 // -----------------------------------------------------------------------
 //
 // #define SOLARPILOT_SHELLY_CONFIGURED
