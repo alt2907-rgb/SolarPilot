@@ -43,6 +43,14 @@ struct AppConfig {
   // true setzen; im Normalbetrieb auf false belassen.
   static constexpr bool kHexDumpEnabled = false;
 
+  // Bounded-Retry für Laufzeitabfragen: begrenzt zusätzliche Versuche pro
+  // Lesezyklus, ohne das reguläre 5s-Polling in main.cpp zu verändern.
+  static constexpr uint8_t kGoodWeRuntimeMaxAttempts = 3;
+  static constexpr uint32_t kGoodWeRuntimeRetryDelayMs = 150;
+
+  // Anzahl erfolgreicher Lesezyklen zwischen kompakten Statistik-Logs.
+  static constexpr uint32_t kGoodWeStatsLogIntervalReads = 20;
+
   // Testwerte für Milestone 2 (simulierte Überschuss-Schaltung)
   // Hinweis: Diese 200 W / 100 W-Werte sind temporäre Testwerte und werden
   // für den Produktiveinsatz angepasst.
