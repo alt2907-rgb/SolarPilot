@@ -2,6 +2,16 @@
 
 Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell technisch validiert für **GoodWe ET / ET Plus**.
 
+## Meilenstein 4A (implementiert)
+
+- Automatische Erkennung kompatibler Shelly-Geräte im lokalen Netzwerk per mDNS (`_shelly._tcp`)
+- Für gefundene Geräte lokaler Abruf von Geräteinformationen über Shelly RPC `Shelly.GetDeviceInfo` (HTTP, lokal)
+- Erfasst: IP/Host, Geräte-ID, MAC-Adresse, Modell und Generation (soweit vom Gerät geliefert)
+- Rein informativ: läuft einmalig beim Start nach erfolgreicher WLAN-Verbindung, gibt die gefundenen Geräte im Serial Monitor aus
+- Kein Shelly Cloud, kein MQTT, keine Internetabhängigkeit
+- Keine Weboberfläche, keine dauerhafte Speicherung/Konfiguration und **keine** automatische Umschaltung von `ShellyPlugOutput` in diesem Schritt
+- Die bestehende feste Shelly-IP-Konfiguration (Meilenstein 3) bleibt unverändert nutzbar; Discovery ist rein additiv
+
 ## Meilenstein 3 (implementiert)
 
 - Lokale Steuerung eines **Shelly Plug M Gen3** über WLAN/LAN
@@ -24,6 +34,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - `/src/core` und `/include/core`: Basisdienste (Logging, WLAN)
 - `/src/inverter` und `/include/inverter`: Inverter-Abstraktion und GoodWe-Implementierung
 - `/src/output` und `/include/output`: Ausgabe-/Laststeuerungs-Schicht (`VirtualSocketOutput`, `ShellyPlugOutput`)
+- `/src/discovery` und `/include/discovery`: Meilenstein 4A – lokale Shelly-mDNS-Discovery (`ShellyDiscovery`, `ShellyDeviceInfo`)
 - `/include/web`: Platzhalter für spätere Weboberfläche
 - `/include/config`: zentrale Konfiguration
 
@@ -35,6 +46,7 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 - **GoodWe ET / ET Plus lokal per UDP**: Discovery über Broadcast (`48899`) und Laufzeitdaten über lokalen GoodWe-Port (`8899`) per Modbus RTU over UDP ohne Cloud- oder Internetabhängigkeit.
 - **`ISwitchOutput`-Abstraktion**: `SurplusSwitchController` kennt weder `VirtualSocketOutput` noch `ShellyPlugOutput` – die Auswahl erfolgt in `main.cpp` anhand der Konfiguration.
 - **`ShellyPlugOutput` für mehrere Instanzen ausgelegt**: Host, Switch-ID und Timeout sind Konstruktorparameter; mehrere Shelly-Geräte können später ohne Code-Änderungen instanziiert werden.
+- **`ShellyDiscovery` als eigenständiges, dependency-freies Modul (Meilenstein 4A)**: liefert reine `ShellyDeviceInfo`-Daten (IP, Host, ID, MAC, Modell, Generation) ohne Kenntnis von `ShellyPlugOutput` oder einer Weboberfläche – dadurch später direkt für ein "Gerät hinzufügen"-Flow in einer Web-UI wiederverwendbar, ohne dass die Discovery-Logik geändert werden muss.
 
 ## GoodWe-Protokollvalidierung
 
@@ -108,6 +120,23 @@ Kommunikationsfehler werden klar geloggt, z. B.:
 4. Firmware flashen, Serial Monitor öffnen.
 5. Beim ersten Überschreiten der EIN-Schwelle (nach Ablauf der Qualifikationszeit) erscheint `[SHELLY] Steckdose EIN` und das Relais des Shelly schaltet.
 6. Bei Unterschreiten der AUS-Schwelle erscheint `[SHELLY] Steckdose AUS`.
+
+### Shelly-Discovery (Meilenstein 4A) – Testprozedur
+
+1. Mindestens ein Shelly-Gerät (Gen2/Gen3, z. B. Plug S/Plug M) im selben lokalen Netzwerk/Subnetz wie der ESP32-C3 in Betrieb nehmen.
+2. Firmware flashen, Serial Monitor öffnen (`115200` Baud).
+3. Nach erfolgreicher WLAN-Verbindung erscheint automatisch eine Ausgabe wie:
+
+   ```
+   [INFO] [SHELLY-DISCOVERY] 1 Shelly-Gerät(e) per mDNS gefunden.
+   [INFO] [SHELLY-DISCOVERY] 1 Gerät(e) gefunden:
+   [INFO]   [1] shellyplug-s-XXXXXX.local (192.168.1.55)
+   [INFO]        id=shellyplug-s-XXXXXX mac=XXXXXXXXXXXX model=SNPL-00112EU gen=2
+   ```
+
+4. Ist kein Shelly-Gerät im Netzwerk erreichbar, erscheint stattdessen `[SHELLY-DISCOVERY] Kein Shelly-Gerät im Netzwerk gefunden.` und SolarPilot fährt normal mit GoodWe-Discovery und Überschusssteuerung fort.
+5. Wird ein Gerät per mDNS gefunden, aber der lokale RPC-Abruf (`Shelly.GetDeviceInfo`) schlägt fehl (z. B. Zeitüberschreitung), erscheint `Geräteinfo nicht abrufbar (nur mDNS-Daten).`; IP/Host aus dem mDNS-Ergebnis werden trotzdem angezeigt.
+6. Zur Kontrolle: Die bereits konfigurierte feste `kLocalShellyHost`-Schaltlogik aus Meilenstein 3 funktioniert unverändert parallel weiter, unabhängig vom Discovery-Ergebnis.
 
 ## Überschuss-Schaltlogik
 
