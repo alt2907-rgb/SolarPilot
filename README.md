@@ -144,7 +144,30 @@ Kommunikationsfehler werden klar geloggt, z. B.:
 
 - **Verifiziert auf dieser Installation:** Positive `gridPowerW`-Werte bedeuten Netzeinspeisung (PV-Überschuss), negative Werte bedeuten Netzbezug.
 - **Aktuelle Testwerte (konfigurierbar in `AppConfig`)** – temporäre Werte, noch nicht für den Produktiveinsatz:
-  - EIN ab `>= 200 W` Export für mindestens `15 s`
-  - AUS ab `<= 100 W` Export für mindestens `10 s`
-  - Zwischen `100 W` und `200 W` bleibt der Zustand unverändert (Hysterese)
+  - EIN ab `>= 50 W` Export für mindestens `15 s`
+  - AUS ab `<= 20 W` Export für mindestens `10 s`
+  - Zwischen `20 W` und `50 W` bleibt der Zustand unverändert (Hysterese)
+
+## Sicherheits-Fail-safe bei ausbleibenden GoodWe-Daten
+
+`SurplusSwitchController` kapselt zusätzlich einen Fail-safe-Zustand für den Fall, dass keine gültigen Netzleistungsdaten mehr vom GoodWe ankommen:
+
+- Jeder erfolgreiche `update(gridPowerW, nowMs)`-Aufruf merkt sich den Zeitpunkt der letzten gültigen Netzleistung.
+- Schlägt ein GoodWe-Lesezyklus fehl, ruft `main.cpp` stattdessen `noteReadFailure(nowMs)` auf. Ein einzelner Fehlversuch schaltet **nicht** sofort ab.
+- Ist der Ausgang eingeschaltet und seit `AppConfig::kSurplusSwitchFailSafeTimeoutMs` (Standard: **30 s**) keine gültige Netzleistung mehr eingetroffen, schaltet der Controller den Ausgang sicherheitshalber AUS und loggt eindeutig:
+
+  ```
+  [SAFETY] Keine gültigen GoodWe-Daten seit 30 s – Ausgang wird ausgeschaltet.
+  ```
+
+- Nach dem Fail-safe schaltet der Ausgang erst wieder ein, wenn wieder gültige GoodWe-Daten vorliegen **und** die normale Einschaltbedingung (Schwellwert + Einschaltverzögerung) erneut vollständig erfüllt ist – es gibt keinen Sonderweg zum sofortigen Wiedereinschalten.
+- Die bestehende Überschusslogik (Schwellwerte, Ein-/Ausschaltverzögerungen) und die GoodWe-Kommunikation selbst sind davon unberührt.
+
+### Hardwaretest: Fail-safe auslösen
+
+1. Ausgang über die normale Überschusslogik einschalten lassen (Export über der EIN-Schwelle für die Einschaltverzögerung halten) und im Serial Monitor bestätigen, dass er eingeschaltet ist.
+2. GoodWe-Kommunikation unterbrechen, z. B. WLAN des GoodWe/Routers kurz deaktivieren oder den Wechselrichter vom Netzwerk trennen, sodass Leseversuche fehlschlagen.
+3. Nach ca. 30 Sekunden ununterbrochener Fehlversuche erscheint im Serial Monitor `[SAFETY] Keine gültigen GoodWe-Daten seit 30 s – Ausgang wird ausgeschaltet.`, und der reale Ausgang schaltet ab.
+4. GoodWe-Kommunikation wiederherstellen. Der Ausgang bleibt zunächst AUS, bis erneut gültige Netzleistungswerte vorliegen und die normale Einschaltbedingung samt Einschaltverzögerung erneut erfüllt ist.
+
 

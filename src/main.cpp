@@ -50,7 +50,8 @@ SurplusSwitchController surplusSwitchController(
     SurplusSwitchConfig{AppConfig::kSurplusSwitchOnThresholdW,
                         AppConfig::kSurplusSwitchOffThresholdW,
                         AppConfig::kSurplusSwitchOnDelayMs,
-                        AppConfig::kSurplusSwitchOffDelayMs},
+                        AppConfig::kSurplusSwitchOffDelayMs,
+                        AppConfig::kSurplusSwitchFailSafeTimeoutMs},
     selectOutput());
 InverterEndpoint inverter;
 bool inverterReady = false;
@@ -158,6 +159,7 @@ void loop() {
     surplusSwitchController.update(gridPowerW, nowMs);
   } else {
     Logger::warn("Netzleistung konnte nicht gelesen werden.");
+    surplusSwitchController.noteReadFailure(nowMs);
   }
 }
 
