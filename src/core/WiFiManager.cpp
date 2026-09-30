@@ -41,4 +41,8 @@ void WiFiManager::requestReconnect() const {
   WiFi.reconnect();
 }
 
+void WiFiManager::disconnectForTest() const {
+  WiFi.disconnect(false, false);
+}
+
 }  // namespace solarpilot::core
