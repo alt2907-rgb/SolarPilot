@@ -62,6 +62,10 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
 
 bool SurplusSwitchController::isOn() const { return isOn_; }
 
+bool SurplusSwitchController::isFailSafeShutdownPending() const {
+  return failSafeShutdownPending_;
+}
+
 void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
   if (!isOn_ || !hasValidReading_) {
     return;
