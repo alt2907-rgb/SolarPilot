@@ -55,6 +55,7 @@ SurplusSwitchController surplusSwitchController(
                         AppConfig::kSurplusSwitchOffThresholdW,
                         AppConfig::kSurplusSwitchOnDelayMs,
                         AppConfig::kSurplusSwitchOffDelayMs,
+                        AppConfig::kSurplusSwitchOutputRetryDelayMs,
                         AppConfig::kSurplusSwitchFailSafeTimeoutMs},
     selectOutput());
 InverterEndpoint inverter;

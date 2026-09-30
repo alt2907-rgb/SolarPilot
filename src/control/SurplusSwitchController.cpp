@@ -1,5 +1,7 @@
 #include "control/SurplusSwitchController.h"
 
+#include <Arduino.h>
+
 #include "core/Logger.h"
 
 namespace solarpilot::control {
@@ -23,7 +25,7 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
       }
 
       if (elapsedSince(onQualifiedSinceMs_, config_.switchOnDelayMs, nowMs)) {
-        if (output_.setState(true)) {
+        if (trySetOutputState(true)) {
           isOn_ = true;
           onQualificationActive_ = false;
           offQualificationActive_ = false;
@@ -46,7 +48,7 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
     }
 
     if (elapsedSince(offQualifiedSinceMs_, config_.switchOffDelayMs, nowMs)) {
-      if (output_.setState(false)) {
+      if (trySetOutputState(false)) {
         isOn_ = false;
         offQualificationActive_ = false;
         onQualificationActive_ = false;
@@ -77,7 +79,7 @@ void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
     failSafeShutdownPending_ = true;
   }
 
-  if (output_.setState(false)) {
+  if (trySetOutputState(false)) {
     isOn_ = false;
     resetQualificationState();
     failSafeShutdownPending_ = false;
@@ -95,6 +97,25 @@ bool SurplusSwitchController::elapsedSince(uint32_t startMs,
                                            uint32_t durationMs,
                                            uint32_t nowMs) {
   return static_cast<uint32_t>(nowMs - startMs) >= durationMs;
+}
+
+bool SurplusSwitchController::trySetOutputState(bool isOn) {
+  const uint32_t nowMs = millis();
+  if (hasFailedOutputRequest_ && failedOutputRequestState_ == isOn &&
+      !elapsedSince(failedOutputRequestMs_, config_.outputRetryDelayMs,
+                    nowMs)) {
+    return false;
+  }
+
+  if (output_.setState(isOn)) {
+    hasFailedOutputRequest_ = false;
+    return true;
+  }
+
+  hasFailedOutputRequest_ = true;
+  failedOutputRequestState_ = isOn;
+  failedOutputRequestMs_ = millis();
+  return false;
 }
 
 }  // namespace solarpilot::control

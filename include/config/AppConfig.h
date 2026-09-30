@@ -58,6 +58,7 @@ struct AppConfig {
   static constexpr float kSurplusSwitchOffThresholdW = 20.0F;
   static constexpr uint32_t kSurplusSwitchOnDelayMs = 15000;
   static constexpr uint32_t kSurplusSwitchOffDelayMs = 10000;
+  static constexpr uint32_t kSurplusSwitchOutputRetryDelayMs = 5000;
 
   // Sicherheits-Fail-safe: Ausgang zwangsweise AUS, wenn er eingeschaltet ist
   // und seit diesem Zeitraum keine gültige GoodWe-Netzleistung mehr gelesen

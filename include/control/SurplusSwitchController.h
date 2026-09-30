@@ -11,6 +11,7 @@ struct SurplusSwitchConfig {
   float switchOffThresholdW;
   uint32_t switchOnDelayMs;
   uint32_t switchOffDelayMs;
+  uint32_t outputRetryDelayMs;
   // Sicherheits-Fail-safe: wenn der Ausgang eingeschaltet ist und länger als
   // dieser Zeitraum keine gültige GoodWe-Netzleistung eintrifft, wird der
   // Ausgang zwangsweise ausgeschaltet (siehe SurplusSwitchController::noteReadFailure).
@@ -39,6 +40,7 @@ class SurplusSwitchController {
   static bool elapsedSince(uint32_t startMs, uint32_t durationMs,
                            uint32_t nowMs);
 
+  bool trySetOutputState(bool isOn);
   void resetQualificationState();
 
   SurplusSwitchConfig config_;
@@ -49,6 +51,9 @@ class SurplusSwitchController {
   bool offQualificationActive_ = false;
   uint32_t onQualifiedSinceMs_ = 0;
   uint32_t offQualifiedSinceMs_ = 0;
+  bool hasFailedOutputRequest_ = false;
+  bool failedOutputRequestState_ = false;
+  uint32_t failedOutputRequestMs_ = 0;
 
   bool hasValidReading_ = false;
   uint32_t lastValidReadMs_ = 0;
