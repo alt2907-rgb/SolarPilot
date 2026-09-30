@@ -315,8 +315,7 @@ void loop() {
   handleSerialInput();
   advanceAutomaticTest(millis());
 
-  if (!inverterReady ||
-      (!wifiManager.isConnected() && testMode != TestMode::kFailSafe)) {
+  if (!inverterReady || !wifiManager.isConnected()) {
     delay(1000);
     return;
   }
