@@ -551,7 +551,6 @@ void loop() {
   const uint32_t nowMs = millis();
   const bool wifiConnected =
       !wifiLossSimulationEnabled && wifiManager.isConnected();
-  logSystemHealth(nowMs, wifiConnected);
 
   if (!wifiConnected) {
     // Auch ohne Netzwerk muss die bestehende 30-s-Sicherheitslogik weiter
@@ -610,7 +609,7 @@ void loop() {
   if (AppConfig::kShellyOutputEnabled &&
       surplusSwitchController.hasPendingOutputRetry() &&
       (lastShellyRecoveryAttemptMs == 0 ||
-       static_cast<uint32_t>(nowMs - lastShellyRecoveryAttemptMs) >= 5000U)) {
+       static_cast<uint32_t>(nowMs - lastShellyRecoveryAttemptMs) >= 30000U)) {
     lastShellyRecoveryAttemptMs = nowMs;
     Logger::info("[SHELLY-RECOVERY] Schaltfehler erkannt; gebundenes Gerät wird neu aufgelöst.");
     bindConfiguredShellyFromDiscovery();
@@ -648,7 +647,7 @@ void loop() {
       !goodWeLossSimulationEnabled && goodWeClient.readGridPowerW(gridPowerW);
   if (testMode == TestMode::kInactive) {
     if (goodWeReadSucceeded) {
-      systemHealth.noteGoodWeReading(nowMs);
+      systemHealth.noteGoodWeReading(millis());
       consoleOutput.printGridPower(gridPowerW);
       surplusSwitchController.update(gridPowerW, nowMs);
     } else {
@@ -670,6 +669,7 @@ void loop() {
     if (goodWeReadSucceeded) {
       consecutiveGoodWeFailedCycles = 0;
     }
+    logSystemHealth(millis(), wifiConnected);
     return;
   }
 
