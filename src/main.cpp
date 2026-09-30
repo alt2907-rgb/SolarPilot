@@ -8,6 +8,7 @@
 #include "config/AppConfig.h"
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
+#include "core/SystemHealth.h"
 #include "core/WiFiManager.h"
 #include "discovery/ShellyDeviceInfo.h"
 #include "discovery/ShellyDiscovery.h"
@@ -21,6 +22,7 @@ using solarpilot::config::AppConfig;
 using solarpilot::control::SurplusSwitchConfig;
 using solarpilot::control::SurplusSwitchController;
 using solarpilot::core::Logger;
+using solarpilot::core::SystemHealth;
 using solarpilot::core::WiFiManager;
 using solarpilot::discovery::ShellyDeviceInfo;
 using solarpilot::discovery::ShellyDiscovery;
@@ -71,6 +73,9 @@ bool wifiWasConnected = false;
 bool shellyFailureSimulationEnabled = false;
 bool goodWeLossSimulationEnabled = false;
 bool wifiLossSimulationEnabled = false;
+SystemHealth systemHealth;
+uint32_t lastHealthLogMs = 0;
+constexpr uint32_t kHealthLogIntervalMs = 60000U;
 
 enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
 enum class AutomaticTestPhase {
@@ -95,6 +100,29 @@ String boundShellyDeviceId;
 
 void runShellyDiscoveryOnce();
 bool bindConfiguredShellyFromDiscovery();
+
+void logSystemHealth(uint32_t nowMs, bool wifiConnected) {
+  if (lastHealthLogMs != 0 &&
+      static_cast<uint32_t>(nowMs - lastHealthLogMs) < kHealthLogIntervalMs) {
+    return;
+  }
+  lastHealthLogMs = nowMs;
+  systemHealth.setGoodWeFailedCycles(consecutiveGoodWeFailedCycles);
+  const auto health = systemHealth.snapshot(
+      wifiConnected, inverterReady, AppConfig::kShellyOutputEnabled,
+      surplusSwitchController.hasPendingOutputRetry(), nowMs,
+      AppConfig::kSurplusSwitchFailSafeTimeoutMs);
+  Logger::infof(
+      "[HEALTH] Gesamt=%s | WLAN=%s | GoodWe=%s | letzter Messwert=%s%lu ms | "
+      "GoodWe-Fehlerzyklen=%lu | Shelly-Retry=%s",
+      SystemHealth::stateToString(health.overall),
+      health.wifiConnected ? "OK" : "AUS",
+      health.goodWeConnected ? "OK" : "AUS",
+      health.hasValidGoodWeReading ? "" : "noch keiner / ",
+      static_cast<unsigned long>(health.lastValidGoodWeAgeMs),
+      static_cast<unsigned long>(health.goodWeFailedCycles),
+      health.outputRetryPending ? "JA" : "NEIN");
+}
 
 void loadShellyBinding() {
   if (!AppConfig::kShellyOutputEnabled) return;
@@ -523,6 +551,7 @@ void loop() {
   const uint32_t nowMs = millis();
   const bool wifiConnected =
       !wifiLossSimulationEnabled && wifiManager.isConnected();
+  logSystemHealth(nowMs, wifiConnected);
 
   if (!wifiConnected) {
     // Auch ohne Netzwerk muss die bestehende 30-s-Sicherheitslogik weiter
@@ -619,6 +648,7 @@ void loop() {
       !goodWeLossSimulationEnabled && goodWeClient.readGridPowerW(gridPowerW);
   if (testMode == TestMode::kInactive) {
     if (goodWeReadSucceeded) {
+      systemHealth.noteGoodWeReading(nowMs);
       consoleOutput.printGridPower(gridPowerW);
       surplusSwitchController.update(gridPowerW, nowMs);
     } else {
