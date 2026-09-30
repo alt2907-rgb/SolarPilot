@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 
 #include "output/ISwitchOutput.h"
@@ -18,9 +19,11 @@ class ShellyPlugOutput final : public ISwitchOutput {
 
   bool setState(bool isOn) override;
   void setTestFailureEnabled(bool enabled);
+  void setHost(const char* host);
+  const char* host() const;
 
  private:
-  const char* host_;
+  String host_;
   uint8_t switchId_;
   uint32_t timeoutMs_;
 
