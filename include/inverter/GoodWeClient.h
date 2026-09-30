@@ -13,6 +13,7 @@ class GoodWeClient final : public IInverterClient {
   bool discover(InverterEndpoint& endpoint, uint32_t timeoutMs) override;
   bool connect(const InverterEndpoint& endpoint) override;
   bool readGridPowerW(float& gridPowerW) override;
+  void resetConnection();
 
  private:
   // Ergebnis eines einzelnen Laufzeit-Request-Versuchs, für Diagnose-Logging.
