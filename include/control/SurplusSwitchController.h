@@ -52,6 +52,7 @@ class SurplusSwitchController {
 
   bool hasValidReading_ = false;
   uint32_t lastValidReadMs_ = 0;
+  bool failSafeShutdownPending_ = false;
 };
 
 }  // namespace solarpilot::control

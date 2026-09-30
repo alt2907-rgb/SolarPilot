@@ -11,6 +11,7 @@ SurplusSwitchController::SurplusSwitchController(
 void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
   hasValidReading_ = true;
   lastValidReadMs_ = nowMs;
+  failSafeShutdownPending_ = false;
 
   if (!isOn_) {
     offQualificationActive_ = false;
@@ -22,11 +23,12 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
       }
 
       if (elapsedSince(onQualifiedSinceMs_, config_.switchOnDelayMs, nowMs)) {
-        isOn_ = true;
-        onQualificationActive_ = false;
-        offQualificationActive_ = false;
-        offQualifiedSinceMs_ = 0;
-        output_.setState(true);
+        if (output_.setState(true)) {
+          isOn_ = true;
+          onQualificationActive_ = false;
+          offQualificationActive_ = false;
+          offQualifiedSinceMs_ = 0;
+        }
       }
     } else {
       onQualificationActive_ = false;
@@ -44,11 +46,12 @@ void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
     }
 
     if (elapsedSince(offQualifiedSinceMs_, config_.switchOffDelayMs, nowMs)) {
-      isOn_ = false;
-      offQualificationActive_ = false;
-      onQualificationActive_ = false;
-      onQualifiedSinceMs_ = 0;
-      output_.setState(false);
+      if (output_.setState(false)) {
+        isOn_ = false;
+        offQualificationActive_ = false;
+        onQualificationActive_ = false;
+        onQualifiedSinceMs_ = 0;
+      }
     }
   } else {
     offQualificationActive_ = false;
@@ -66,13 +69,19 @@ void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
     return;
   }
 
-  core::Logger::infof(
-      "[SAFETY] Keine gültigen GoodWe-Daten seit %u s – Ausgang wird ausgeschaltet.",
-      static_cast<unsigned>(config_.failSafeTimeoutMs / 1000U));
+  if (!failSafeShutdownPending_) {
+    core::Logger::infof(
+        "[SAFETY] Keine gültigen GoodWe-Daten seit %u s – Fail-safe "
+        "fordert AUS an.",
+        static_cast<unsigned>(config_.failSafeTimeoutMs / 1000U));
+    failSafeShutdownPending_ = true;
+  }
 
-  isOn_ = false;
-  resetQualificationState();
-  output_.setState(false);
+  if (output_.setState(false)) {
+    isOn_ = false;
+    resetQualificationState();
+    failSafeShutdownPending_ = false;
+  }
 }
 
 void SurplusSwitchController::resetQualificationState() {
