@@ -50,6 +50,10 @@ struct AppConfig {
   // Lesezyklus, ohne das reguläre 5s-Polling in main.cpp zu verändern.
   static constexpr uint8_t kGoodWeRuntimeMaxAttempts = 3;
   static constexpr uint32_t kGoodWeRuntimeRetryDelayMs = 150;
+  // Hardware-Diagnose: Antworten sind valide und stammen vom richtigen Gerät,
+  // kommen aber häufig später als 1200 ms. Etwas mehr Antwortzeit reduziert
+  // unnötige Neu-Anfragen, ohne Polling- oder Fail-safe-Logik zu verändern.
+  static constexpr uint32_t kGoodWeRuntimeResponseTimeoutMs = 2000;
 
   // Anzahl erfolgreicher Lesezyklen zwischen kompakten Statistik-Logs.
   static constexpr uint32_t kGoodWeStatsLogIntervalReads = 20;
