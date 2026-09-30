@@ -235,7 +235,18 @@ Typische Recovery-Logs:
 
 ### Hardwaretest ohne Netzwerk-Konfiguration zu ändern
 
-Der RAM-only-Befehl `TG` schaltet eine GoodWe-Verlustsimulation um. Die Simulation verschwindet bei Reset vollständig.
+Die RAM-only-Befehle `TW` und `TG` schalten reproduzierbare Verlustsimulationen um. Beide Simulationen verschwinden bei Reset vollständig.
+
+### WLAN-Recovery mit `TW`
+
+1. Im normalen Betrieb `TW` senden. Der ESP32 trennt seine WLAN-Station, ohne die WLAN-Konfiguration zu löschen.
+2. Während `TW` aktiv ist, bleibt die Wiederverbindung absichtlich unterbrochen; die normale Fail-safe-Zeitmessung läuft weiter.
+3. `TW` erneut senden. SolarPilot verwendet danach den normalen 10-s-Reconnect-Pfad und sucht nach WLAN-Rückkehr GoodWe automatisch neu.
+4. War der Ausgang beim Verlust EIN und der Ausfall lang genug, hat das bestätigte Shelly-AUS weiterhin Priorität vor dem normalen GoodWe-Regelbetrieb.
+
+### GoodWe-Recovery mit `TG`
+
+`TG` simuliert ausschließlich den Verlust der GoodWe-Verbindung bei weiter bestehendem WLAN.
 
 1. Im normalen Betrieb `TG` senden.
 2. SolarPilot behandelt die folgenden GoodWe-Lesezyklen als fehlgeschlagen. Nach fünf vollständigen Zyklen muss `[RECOVERY] ... als verloren markiert` erscheinen.
@@ -243,4 +254,4 @@ Der RAM-only-Befehl `TG` schaltet eine GoodWe-Verlustsimulation um. Die Simulati
 4. `TG` erneut senden. SolarPilot wechselt in den Recovery-Pfad und muss GoodWe selbstständig wiederfinden.
 5. Bei zuvor eingeschaltetem Ausgang kann zusätzlich der bestehende 30-s-Fail-safe beobachtet werden.
 
-Bestehende Testbefehle `D`, `T<number>`, `T-`, `TA`, `TF` und `TX` bleiben erhalten.
+Bestehende Testbefehle `D`, `T<number>`, `T-`, `TA`, `TF`, `TG`, `TW` und `TX` bleiben erhalten.

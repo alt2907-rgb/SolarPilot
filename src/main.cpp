@@ -68,6 +68,7 @@ uint8_t consecutiveGoodWeFailedCycles = 0;
 bool wifiWasConnected = false;
 bool shellyFailureSimulationEnabled = false;
 bool goodWeLossSimulationEnabled = false;
+bool wifiLossSimulationEnabled = false;
 
 enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
 enum class AutomaticTestPhase {
@@ -165,6 +166,18 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
   if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
     Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
     runShellyDiscoveryOnce();
+    return;
+  }
+
+  if (strcmp(command, "TW") == 0) {
+    wifiLossSimulationEnabled = !wifiLossSimulationEnabled;
+    Logger::infof("[TESTMODE] WLAN-Verlustsimulation %s.",
+                  wifiLossSimulationEnabled ? "aktiviert" : "deaktiviert");
+    if (wifiLossSimulationEnabled) {
+      wifiManager.disconnectForTest();
+    } else {
+      lastWifiReconnectAttemptMs = 0;
+    }
     return;
   }
 
@@ -345,8 +358,8 @@ void setup() {
   delay(200);
   Logger::info("SolarPilot startet...");
   Logger::info(
-      "D = Shelly-Discovery | TG = GoodWe-Verlustsimulation | "
-      "TX = Shelly-Fehlersimulation");
+      "D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
+      "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
@@ -386,7 +399,8 @@ void loop() {
   advanceAutomaticTest(millis());
 
   const uint32_t nowMs = millis();
-  const bool wifiConnected = wifiManager.isConnected();
+  const bool wifiConnected =
+      !wifiLossSimulationEnabled && wifiManager.isConnected();
 
   if (!wifiConnected) {
     // Auch ohne Netzwerk muss die bestehende 30-s-Sicherheitslogik weiter
@@ -405,8 +419,15 @@ void loop() {
     if (static_cast<uint32_t>(nowMs - lastWifiReconnectAttemptMs) >=
         AppConfig::kWifiReconnectIntervalMs) {
       lastWifiReconnectAttemptMs = nowMs;
-      Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
-      wifiManager.requestReconnect();
+      if (wifiLossSimulationEnabled) {
+        Logger::warn(
+            "[TESTMODE] TW: WLAN-Recovery bleibt während der Simulation "
+            "absichtlich unterbrochen.");
+        wifiManager.disconnectForTest();
+      } else {
+        Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
+        wifiManager.requestReconnect();
+      }
     }
     delay(100);
     return;
