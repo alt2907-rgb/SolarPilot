@@ -35,4 +35,10 @@ bool WiFiManager::isConnected() const {
   return WiFi.status() == WL_CONNECTED;
 }
 
+void WiFiManager::requestReconnect() const {
+  // WiFi.reconnect() only starts the station reconnect attempt; recovery is
+  // observed asynchronously from loop(), so safety handling keeps running.
+  WiFi.reconnect();
+}
+
 }  // namespace solarpilot::core
