@@ -180,6 +180,26 @@ void startFailSafeTest() {
 }
 
 void handleSerialCommand(const char* command, uint32_t nowMs) {
+  if (strcmp(command, "TB") == 0) {
+    if (!AppConfig::kShellyOutputEnabled) {
+      Logger::warn("[SHELLY-BINDING] TB: Shelly-Ausgang ist nicht aktiviert.");
+      return;
+    }
+
+    const String persistedDeviceId =
+        shellyBindingPreferences.getString("device-id", "");
+    if (persistedDeviceId.isEmpty()) {
+      Logger::warn("[SHELLY-BINDING] TB: Keine Geräte-ID im NVS gespeichert.");
+    } else {
+      Logger::infof("[SHELLY-BINDING] TB: Im NVS gespeicherte Geräte-ID: %s",
+                    persistedDeviceId.c_str());
+    }
+    Logger::infof("[SHELLY-BINDING] TB: Aktive Geräte-ID im RAM: %s",
+                  boundShellyDeviceId.isEmpty() ? "<leer>"
+                                                : boundShellyDeviceId.c_str());
+    return;
+  }
+
   if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
     Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
     runShellyDiscoveryOnce();
@@ -425,7 +445,8 @@ void setup() {
   Logger::info("SolarPilot startet...");
   Logger::info(
       "D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
-      "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation");
+      "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation | "
+      "TB = Shelly-Bindung prüfen");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
