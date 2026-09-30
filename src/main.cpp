@@ -538,9 +538,9 @@ void setup() {
   if (inverterReady) {
     Logger::info(
         "Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
-    // Bindung läuft erst nach GoodWe, damit mDNS die Inverter-Initialisierung
-    // nicht beeinflusst. Die bisherige feste IP bleibt jederzeit Fallback.
-    bindConfiguredShellyFromDiscovery();
+    // Keep the normal runtime path free of mDNS. The persisted last-known
+    // Shelly endpoint loaded above is sufficient for switching. Discovery
+    // remains available explicitly through the serial D command.
   } else {
     Logger::warn(
         "[RECOVERY] Start ohne GoodWe; automatische Wiederherstellung aktiv.");
