@@ -66,10 +66,10 @@ bool inverterReady = false;
 uint32_t lastReadMs = 0;
 uint32_t lastWifiReconnectAttemptMs = 0;
 uint32_t lastGoodWeRecoveryAttemptMs = 0;
-uint32_t lastShellyRecoveryAttemptMs = 0;
 uint32_t wifiLostAtMs = 0;
 uint8_t consecutiveGoodWeFailedCycles = 0;
 bool wifiWasConnected = false;
+bool forceGoodWeDiscoveryOnRecovery = false;
 bool shellyFailureSimulationEnabled = false;
 bool goodWeLossSimulationEnabled = false;
 bool wifiLossSimulationEnabled = false;
@@ -161,23 +161,27 @@ bool recoverGoodWe(uint32_t nowMs) {
   Logger::info("[RECOVERY] Stelle GoodWe-Verbindung wieder her...");
   goodWeClient.resetConnection();
 
-  // Laufzeit-Timeouts bedeuten nicht automatisch, dass der Wechselrichter
-  // seine IP geändert hat. Zuerst den zuletzt bestätigten Endpoint direkt
-  // wiederverwenden; Broadcast-Discovery bleibt Fallback für Boot/IP-Wechsel.
+  // Reuse the last known endpoint once. If communication still fails enough
+  // to trigger another recovery, force broadcast discovery instead of
+  // declaring the same unverified endpoint recovered forever.
   InverterEndpoint recoveredInverter = inverter;
   if (recoveredInverter.ip != IPAddress(0, 0, 0, 0) &&
+      !forceGoodWeDiscoveryOnRecovery &&
       goodWeClient.connect(recoveredInverter)) {
-    Logger::infof("[RECOVERY] Letzten GoodWe-Endpunkt wiederverwendet: %s",
+    forceGoodWeDiscoveryOnRecovery = true;
+    Logger::infof("[RECOVERY] Letzten GoodWe-Endpunkt einmalig wiederverwendet: %s",
                   recoveredInverter.ip.toString().c_str());
   } else {
     Logger::info("[RECOVERY] Suche GoodWe-Wechselrichter per Broadcast...");
     if (!goodWeClient.discover(recoveredInverter,
                                AppConfig::kInverterDiscoveryTimeoutMs) ||
         !goodWeClient.connect(recoveredInverter)) {
+      forceGoodWeDiscoveryOnRecovery = true;
       Logger::warn(
           "[RECOVERY] GoodWe noch nicht verfügbar; erneuter Versuch folgt.");
       return false;
     }
+    forceGoodWeDiscoveryOnRecovery = false;
   }
 
   inverter = recoveredInverter;
@@ -258,7 +262,6 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
       return;
     }
     shellyPlugOutput.setHost("192.0.2.1");
-    lastShellyRecoveryAttemptMs = 0;
     Logger::info("[TESTMODE] TS: Shelly-Endpunkt absichtlich auf Test-IP 192.0.2.1 gesetzt. Nächster echter Schaltvorgang muss Self-Healing auslösen.");
     return;
   }
@@ -587,7 +590,6 @@ void loop() {
     wifiWasConnected = true;
     Logger::info("[RECOVERY] WLAN wiederhergestellt.");
     lastGoodWeRecoveryAttemptMs = 0;
-    bindConfiguredShellyFromDiscovery();
 
     // War das WLAN lange genug weg, muss ein eingeschalteter Ausgang zuerst
     // wirklich AUS bestätigt werden, bevor normale Überschussdaten wieder
@@ -604,16 +606,9 @@ void loop() {
     }
   }
 
-  // Self-healing Shelly endpoint: after a failed physical switch request,
-  // re-resolve the bound device before the controller's next retry.
-  if (AppConfig::kShellyOutputEnabled &&
-      surplusSwitchController.hasPendingOutputRetry() &&
-      (lastShellyRecoveryAttemptMs == 0 ||
-       static_cast<uint32_t>(nowMs - lastShellyRecoveryAttemptMs) >= 30000U)) {
-    lastShellyRecoveryAttemptMs = nowMs;
-    Logger::info("[SHELLY-RECOVERY] Schaltfehler erkannt; gebundenes Gerät wird neu aufgelöst.");
-    bindConfiguredShellyFromDiscovery();
-  }
+  // Runtime recovery deliberately avoids mDNS/device-info traffic. The last
+  // known Shelly endpoint remains active; output retries are handled by the
+  // controller without blocking GoodWe with discovery work.
 
   if (!inverterReady) {
     surplusSwitchController.noteReadFailure(nowMs);
@@ -668,6 +663,7 @@ void loop() {
     }
     if (goodWeReadSucceeded) {
       consecutiveGoodWeFailedCycles = 0;
+      forceGoodWeDiscoveryOnRecovery = false;
     }
     logSystemHealth(millis(), wifiConnected);
     return;
