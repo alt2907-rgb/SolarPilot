@@ -34,6 +34,7 @@ class SurplusSwitchController {
   void noteReadFailure(uint32_t nowMs);
 
   bool isOn() const;
+  bool isFailSafeShutdownPending() const;
 
  private:
   // Erwartet monotone Zeitbasis (z. B. millis()).
