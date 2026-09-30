@@ -210,3 +210,37 @@ Kommunikationsfehler werden klar geloggt, z. B.:
 4. GoodWe-Kommunikation wiederherstellen. Der Ausgang bleibt zunächst AUS, bis erneut gültige Netzleistungswerte vorliegen und die normale Einschaltbedingung samt Einschaltverzögerung erneut erfüllt ist.
 
 
+
+
+## Connectivity & Recovery
+
+SolarPilot beendet den Regelbetrieb bei Netzwerkstörungen nicht mehr dauerhaft:
+
+- Fällt WLAN aus, läuft die Sicherheitsüberwachung weiter. Alle 10 s wird ein nicht-blockierender WLAN-Reconnect angestoßen.
+- Nach Rückkehr des WLANs wird GoodWe automatisch neu gesucht und verbunden.
+- Fünf vollständig fehlgeschlagene GoodWe-Lesezyklen hintereinander markieren die Laufzeitverbindung als verloren. Einzelne UDP-Timeouts und die bestehenden drei Runtime-Versuche bleiben unverändert.
+- Solange GoodWe nicht bereit ist, wird alle 15 s ein neuer Discovery-/Connect-Versuch gestartet.
+- War WLAN mindestens so lange weg wie der 30-s-Fail-safe und der Ausgang ist noch EIN, hat das bestätigte Ausschalten Priorität vor der Rückkehr zum normalen Überschussbetrieb.
+- Die PR-#15-Ausgangsbestätigung und deren Retry-Verhalten bleiben der einzige Weg, den internen Ausgangszustand nach einem Schaltbefehl zu ändern.
+
+Typische Recovery-Logs:
+
+```text
+[RECOVERY] WLAN-Verbindung verloren.
+[RECOVERY] WLAN-Wiederverbindung wird versucht...
+[RECOVERY] WLAN wiederhergestellt.
+[RECOVERY] Suche GoodWe-Wechselrichter...
+[RECOVERY] GoodWe-Verbindung wiederhergestellt.
+```
+
+### Hardwaretest ohne Netzwerk-Konfiguration zu ändern
+
+Der RAM-only-Befehl `TG` schaltet eine GoodWe-Verlustsimulation um. Die Simulation verschwindet bei Reset vollständig.
+
+1. Im normalen Betrieb `TG` senden.
+2. SolarPilot behandelt die folgenden GoodWe-Lesezyklen als fehlgeschlagen. Nach fünf vollständigen Zyklen muss `[RECOVERY] ... als verloren markiert` erscheinen.
+3. Während `TG` aktiv ist, bleiben Recovery-Versuche absichtlich erfolglos.
+4. `TG` erneut senden. SolarPilot wechselt in den Recovery-Pfad und muss GoodWe selbstständig wiederfinden.
+5. Bei zuvor eingeschaltetem Ausgang kann zusätzlich der bestehende 30-s-Fail-safe beobachtet werden.
+
+Bestehende Testbefehle `D`, `T<number>`, `T-`, `TA`, `TF` und `TX` bleiben erhalten.

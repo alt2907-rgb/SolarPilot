@@ -61,7 +61,13 @@ SurplusSwitchController surplusSwitchController(
 InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
+uint32_t lastWifiReconnectAttemptMs = 0;
+uint32_t lastGoodWeRecoveryAttemptMs = 0;
+uint32_t wifiLostAtMs = 0;
+uint8_t consecutiveGoodWeFailedCycles = 0;
+bool wifiWasConnected = false;
 bool shellyFailureSimulationEnabled = false;
+bool goodWeLossSimulationEnabled = false;
 
 enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
 enum class AutomaticTestPhase {
@@ -83,6 +89,40 @@ bool serialLineOverflow = false;
 ShellyDiscovery shellyDiscovery;
 
 void runShellyDiscoveryOnce();
+
+bool recoverGoodWe(uint32_t nowMs) {
+  if (!wifiManager.isConnected()) {
+    return false;
+  }
+  if (static_cast<uint32_t>(nowMs - lastGoodWeRecoveryAttemptMs) <
+      AppConfig::kGoodWeRecoveryIntervalMs &&
+      lastGoodWeRecoveryAttemptMs != 0) {
+    return false;
+  }
+  lastGoodWeRecoveryAttemptMs = nowMs;
+
+  if (goodWeLossSimulationEnabled) {
+    Logger::warn("[TESTMODE] TG: GoodWe-Recovery simuliert weiterhin erfolglos.");
+    return false;
+  }
+
+  Logger::info("[RECOVERY] Suche GoodWe-Wechselrichter...");
+  goodWeClient.resetConnection();
+  InverterEndpoint recoveredInverter;
+  if (!goodWeClient.discover(recoveredInverter,
+                             AppConfig::kInverterDiscoveryTimeoutMs) ||
+      !goodWeClient.connect(recoveredInverter)) {
+    Logger::warn("[RECOVERY] GoodWe noch nicht verfügbar; erneuter Versuch folgt.");
+    return false;
+  }
+
+  inverter = recoveredInverter;
+  inverterReady = true;
+  consecutiveGoodWeFailedCycles = 0;
+  lastReadMs = nowMs - AppConfig::kReadIntervalMs;
+  Logger::info("[RECOVERY] GoodWe-Verbindung wiederhergestellt.");
+  return true;
+}
 
 void endTestMode() {
   testMode = TestMode::kInactive;
@@ -125,6 +165,20 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
   if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
     Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
     runShellyDiscoveryOnce();
+    return;
+  }
+
+  if (strcmp(command, "TG") == 0) {
+    goodWeLossSimulationEnabled = !goodWeLossSimulationEnabled;
+    Logger::infof("[TESTMODE] GoodWe-Verlustsimulation %s.",
+                  goodWeLossSimulationEnabled ? "aktiviert" : "deaktiviert");
+    if (goodWeLossSimulationEnabled) {
+      inverterReady = true;
+      consecutiveGoodWeFailedCycles = 0;
+    } else {
+      inverterReady = false;
+      lastGoodWeRecoveryAttemptMs = 0;
+    }
     return;
   }
 
@@ -291,8 +345,8 @@ void setup() {
   delay(200);
   Logger::info("SolarPilot startet...");
   Logger::info(
-      "D = Shelly-Discovery erneut ausführen | TX = Shelly-Fehlersimulation "
-      "umschalten");
+      "D = Shelly-Discovery | TG = GoodWe-Verlustsimulation | "
+      "TX = Shelly-Fehlersimulation");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
@@ -300,44 +354,97 @@ void setup() {
     Logger::info("[CONFIG] Ausgabe: VirtualSocketOutput (Testmodus)");
   }
 
-  if (!wifiManager.connect(AppConfig::kWifiSsid, AppConfig::kWifiPassword,
-                           AppConfig::kWifiConnectTimeoutMs)) {
-    Logger::error("Setup abgebrochen: WLAN nicht verfügbar.");
+  wifiWasConnected =
+      wifiManager.connect(AppConfig::kWifiSsid, AppConfig::kWifiPassword,
+                          AppConfig::kWifiConnectTimeoutMs);
+  if (!wifiWasConnected) {
+    Logger::warn(
+        "[RECOVERY] Start ohne WLAN; SolarPilot versucht die Verbindung "
+        "selbstständig wiederherzustellen.");
+    wifiLostAtMs = millis();
+    lastWifiReconnectAttemptMs = millis();
     return;
   }
 
-  // GoodWe zuerst zuverlässig initialisieren: die informative Shelly-mDNS-
-  // Discovery läuft absichtlich erst danach (siehe runShellyDiscoveryOnce()
-  // weiter unten), damit ein mDNS-/Discovery-Problem niemals den GoodWe-Start
-  // verzögert oder beeinträchtigt.
-  if (!goodWeClient.discover(inverter, AppConfig::kInverterDiscoveryTimeoutMs)) {
-    Logger::error("Setup abgebrochen: GoodWe nicht gefunden.");
-    return;
+  // Ein fehlender GoodWe beendet den Start nicht mehr dauerhaft. Der gleiche
+  // Recovery-Pfad wird beim Boot und nach Laufzeitverlusten verwendet.
+  lastGoodWeRecoveryAttemptMs = 0;
+  recoverGoodWe(millis());
+  if (inverterReady) {
+    Logger::info(
+        "Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
+    // Rein informative Shelly-Discovery erst nach erfolgreichem GoodWe-Start.
+    runShellyDiscoveryOnce();
+  } else {
+    Logger::warn(
+        "[RECOVERY] Start ohne GoodWe; automatische Wiederherstellung aktiv.");
   }
-
-  if (!goodWeClient.connect(inverter)) {
-    Logger::error("Setup abgebrochen: Verbindung zum GoodWe fehlgeschlagen.");
-    return;
-  }
-
-  inverterReady = true;
-  Logger::info("Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
-
-  // Rein informativ und entkoppelt vom GoodWe-Kernbetrieb: ein Fehler hier
-  // (mDNS, RPC) darf inverterReady/den Regelbetrieb nicht mehr beeinflussen.
-  runShellyDiscoveryOnce();
 }
 
 void loop() {
   handleSerialInput();
   advanceAutomaticTest(millis());
 
-  if (!inverterReady || !wifiManager.isConnected()) {
-    delay(1000);
+  const uint32_t nowMs = millis();
+  const bool wifiConnected = wifiManager.isConnected();
+
+  if (!wifiConnected) {
+    // Auch ohne Netzwerk muss die bestehende 30-s-Sicherheitslogik weiter
+    // laufen. Ein fehlgeschlagener Shelly-AUS-Befehl bleibt durch PR #15
+    // ausstehend und wird nach Rückkehr des Netzes erneut versucht.
+    surplusSwitchController.noteReadFailure(nowMs);
+
+    if (wifiWasConnected) {
+      wifiWasConnected = false;
+      wifiLostAtMs = nowMs;
+      inverterReady = false;
+      goodWeClient.resetConnection();
+      Logger::warn("[RECOVERY] WLAN-Verbindung verloren.");
+    }
+
+    if (static_cast<uint32_t>(nowMs - lastWifiReconnectAttemptMs) >=
+        AppConfig::kWifiReconnectIntervalMs) {
+      lastWifiReconnectAttemptMs = nowMs;
+      Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
+      wifiManager.requestReconnect();
+    }
+    delay(100);
     return;
   }
 
-  const uint32_t nowMs = millis();
+  if (!wifiWasConnected) {
+    wifiWasConnected = true;
+    Logger::info("[RECOVERY] WLAN wiederhergestellt.");
+    lastGoodWeRecoveryAttemptMs = 0;
+
+    // War das WLAN lange genug weg, muss ein eingeschalteter Ausgang zuerst
+    // wirklich AUS bestätigt werden, bevor normale Überschussdaten wieder
+    // verarbeitet werden.
+    if (wifiLostAtMs != 0 &&
+        static_cast<uint32_t>(nowMs - wifiLostAtMs) >=
+            AppConfig::kSurplusSwitchFailSafeTimeoutMs &&
+        surplusSwitchController.isOn()) {
+      surplusSwitchController.noteReadFailure(nowMs);
+      if (surplusSwitchController.isOn()) {
+        delay(100);
+        return;
+      }
+    }
+  }
+
+  if (!inverterReady) {
+    surplusSwitchController.noteReadFailure(nowMs);
+    // Sobald der Fail-safe ein bestätigtes AUS verlangt, darf eine neue
+    // GoodWe-Messung diesen Pending-Zustand nicht durch update() aufheben.
+    // Erst nach erfolgreichem physischem AUS wird die Recovery fortgesetzt.
+    if (surplusSwitchController.isFailSafeShutdownPending()) {
+      delay(100);
+      return;
+    }
+    recoverGoodWe(nowMs);
+    delay(100);
+    return;
+  }
   if ((nowMs - lastReadMs) < AppConfig::kReadIntervalMs) {
     delay(50);
     return;
@@ -353,7 +460,8 @@ void loop() {
   }
 
   float gridPowerW = 0.0F;
-  const bool goodWeReadSucceeded = goodWeClient.readGridPowerW(gridPowerW);
+  const bool goodWeReadSucceeded =
+      !goodWeLossSimulationEnabled && goodWeClient.readGridPowerW(gridPowerW);
   if (testMode == TestMode::kInactive) {
     if (goodWeReadSucceeded) {
       consoleOutput.printGridPower(gridPowerW);
@@ -361,6 +469,21 @@ void loop() {
     } else {
       Logger::warn("Netzleistung konnte nicht gelesen werden.");
       surplusSwitchController.noteReadFailure(nowMs);
+      if (consecutiveGoodWeFailedCycles < 0xFFU) {
+        ++consecutiveGoodWeFailedCycles;
+      }
+      if (consecutiveGoodWeFailedCycles >=
+          AppConfig::kGoodWeFailedCyclesBeforeRecovery) {
+        Logger::warn(
+            "[RECOVERY] GoodWe-Verbindung nach mehreren vollständig "
+            "fehlgeschlagenen Lesezyklen als verloren markiert.");
+        inverterReady = false;
+        goodWeClient.resetConnection();
+        lastGoodWeRecoveryAttemptMs = 0;
+      }
+    }
+    if (goodWeReadSucceeded) {
+      consecutiveGoodWeFailedCycles = 0;
     }
     return;
   }

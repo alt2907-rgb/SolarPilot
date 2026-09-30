@@ -70,6 +70,12 @@ bool GoodWeClient::discover(InverterEndpoint& endpoint, uint32_t timeoutMs) {
   return false;
 }
 
+void GoodWeClient::resetConnection() {
+  connected_ = false;
+  inverterIp_ = IPAddress(0, 0, 0, 0);
+  udp_.stop();
+}
+
 bool GoodWeClient::connect(const InverterEndpoint& endpoint) {
   inverterIp_ = endpoint.ip;
   connected_ = inverterIp_ != IPAddress(0, 0, 0, 0);
