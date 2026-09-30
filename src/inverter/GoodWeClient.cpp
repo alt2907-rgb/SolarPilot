@@ -132,7 +132,7 @@ GoodWeClient::RuntimeAttemptResult GoodWeClient::requestRuntimeData(
     const uint16_t remotePort = udp_.remotePort();
     if (remoteIp != inverterIp_ || remotePort != runtimePort_) {
       ++unexpectedSenderPackets_;
-      core::Logger::warnf(
+      core::Logger::infof(
           "GoodWe-Diagnose: fremdes UDP-Paket verworfen (von %s:%u, %d Byte).",
           remoteIp.toString().c_str(), static_cast<unsigned>(remotePort),
           packetSize);
