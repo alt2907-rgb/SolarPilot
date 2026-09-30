@@ -9,8 +9,7 @@
 namespace solarpilot::output {
 namespace {
 
-constexpr uint8_t kMaxSetStateAttempts = 3;
-constexpr uint32_t kSetStateRetryDelayMs = 250;
+constexpr uint8_t kMaxSetStateAttempts = 1;
 
 }  // namespace
 
@@ -66,9 +65,6 @@ bool ShellyPlugOutput::setState(bool isOn) {
       core::Logger::warn(message);
     }
 
-    if (attempt < kMaxSetStateAttempts) {
-      delay(kSetStateRetryDelayMs);
-    }
   }
 
   if (isOn) {
