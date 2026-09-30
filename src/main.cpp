@@ -212,6 +212,17 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
     return;
   }
 
+  if (strcmp(command, "TS") == 0) {
+    if (!AppConfig::kShellyOutputEnabled || boundShellyDeviceId.isEmpty()) {
+      Logger::warn("[TESTMODE] TS benötigt einen dauerhaft gebundenen Shelly.");
+      return;
+    }
+    shellyPlugOutput.setHost("192.0.2.1");
+    lastShellyRecoveryAttemptMs = 0;
+    Logger::info("[TESTMODE] TS: Shelly-Endpunkt absichtlich auf Test-IP 192.0.2.1 gesetzt. Nächster echter Schaltvorgang muss Self-Healing auslösen.");
+    return;
+  }
+
   if (strcmp(command, "TW") == 0) {
     wifiLossSimulationEnabled = !wifiLossSimulationEnabled;
     Logger::infof("[TESTMODE] WLAN-Verlustsimulation %s.",
@@ -456,7 +467,7 @@ void setup() {
   Logger::info(
       "D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
       "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation | "
-      "TB = Shelly-Bindung prüfen");
+      "TB = Shelly-Bindung prüfen | TS = Shelly-Endpunkt-Recovery testen");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
