@@ -16,7 +16,8 @@ class ShellyPlugOutput final : public ISwitchOutput {
   ShellyPlugOutput(const char* host, uint8_t switchId = 0,
                    uint32_t timeoutMs = 3000);
 
-  void setState(bool isOn) override;
+  bool setState(bool isOn) override;
+  void setTestFailureEnabled(bool enabled);
 
  private:
   const char* host_;
@@ -25,6 +26,7 @@ class ShellyPlugOutput final : public ISwitchOutput {
 
   bool hasState_ = false;
   bool isOn_ = false;
+  bool testFailureEnabled_ = false;
 };
 
 }  // namespace solarpilot::output

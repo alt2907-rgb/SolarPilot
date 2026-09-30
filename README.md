@@ -82,11 +82,14 @@ Die Befehle werden im Serial Monitor mit `115200` Baud zeilenweise nach Enter au
 | `T-` | Testmodus beenden und sofort wieder echte GoodWe-Messwerte für die Regelung verwenden |
 | `TA` | Nicht blockierenden EIN/AUS-Zyklus mit den konfigurierten Schwellen und Verzögerungen starten; danach automatische Rückkehr zu GoodWe |
 | `TF` | GoodWe-Leseausfall simulieren und den unveränderten Fail-safe-Pfad testen; kein Leistungswert wird eingespeist |
+| `TX` | Shelly-Schaltfehler simulieren bzw. Simulation wieder deaktivieren (nur bei aktiviertem Shelly-Ausgang) |
 | `D` oder `d` | Shelly-mDNS-Discovery wie bisher erneut ausführen |
 
 Simulierte Werte und Phasen sind im Log mit `[TESTMODE]` gekennzeichnet. `TA` lässt den Controller zunächst einen Wert unter der EIN-Schwelle, danach lange genug Überschuss für die normale EIN-Verzögerung und anschließend einen Wert unter der AUS-Schwelle für die normale AUS-Verzögerung sehen. Es schaltet den Shelly nie direkt.
 
 `TF` startet nur, wenn der Controller-Ausgang bereits EIN ist. Ist er AUS, erscheint ein Hinweis: zuerst mit `T100` und der normalen Einschaltverzögerung einschalten. Während `TF` wird kein GoodWe-Lesevorgang ausgeführt; jeder reguläre Lesezeitpunkt meldet stattdessen `noteReadFailure()`. Der vorhandene 30-s-Fail-safe schaltet den Ausgang über den normalen Controllerpfad aus. Danach verwendet die Regelung wieder echte GoodWe-Daten. Keine Testeinstellung wird in Flash/NVS gespeichert.
+
+`TX` ist ein zusätzlicher RAM-only Entwicklungsschalter für Ausgangsfehler. Er ist nur verfügbar, wenn `kLocalShellyOutputEnabled = true` ist. Während der Simulation wird kein Shelly-HTTP-Befehl gesendet; stattdessen schlagen die drei begrenzten Schaltversuche kontrolliert fehl. Der Controller behält den zuletzt bestätigten Zustand und startet für denselben weiterhin nötigen Wechsel frühestens 5 Sekunden nach Ende der fehlgeschlagenen Versuchsgruppe einen neuen Dreierblock. Je nach Regelzyklus kann dafür mehr als ein Zyklus vergehen. Nach Reset ist die Simulation automatisch deaktiviert. Ein endgültig fehlgeschlagenes reales AUS wird mit `[SAFETY] [ERROR]` markiert, da der Verbraucher eingeschaltet bleiben kann.
 
 ### Konkreter Shelly-Hardwaretest
 
@@ -95,6 +98,7 @@ Simulierte Werte und Phasen sind im Log mit `[TESTMODE]` gekennzeichnet. `TA` l�
 3. Optional `TA` senden und den automatischen EIN/AUS-Zyklus anhand der `[TESTMODE]`- und `[SHELLY]`-Logs beobachten.
 4. Für den Fail-safe-Aus-Test zunächst wieder mit `T100` einschalten und danach `TF` senden. Der Ausgang muss nach dem vorhandenen 30-s-Timeout über den Controller ausgeschaltet werden.
 5. Mit `T-` jederzeit zum echten GoodWe-Regelbetrieb zurückkehren. Vor dem unbeaufsichtigten Betrieb sicherstellen, dass der Testmodus beendet ist; ein Reset aktiviert ebenfalls wieder den echten Betrieb.
+6. Für die Fehlerbehandlung `TX` aktivieren und mit `T-400` ein erforderliches AUS auslösen. Die simulierten drei Fehlversuche dürfen den Controllerzustand nicht auf AUS setzen. `TX` erneut senden und auf den ersten Regelzyklus mindestens 5 Sekunden nach Ende der fehlgeschlagenen Gruppe warten; dann muss der echte Shelly-AUS-Befehl erneut versucht werden. `T100` kann analog den fehlgeschlagenen EIN-Befehl prüfen.
 
 ## Ausgabemodus konfigurieren
 

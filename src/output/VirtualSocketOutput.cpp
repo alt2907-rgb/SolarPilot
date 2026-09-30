@@ -4,9 +4,9 @@
 
 namespace solarpilot::output {
 
-void VirtualSocketOutput::setState(bool isOn) {
+bool VirtualSocketOutput::setState(bool isOn) {
   if (hasState_ && isOn_ == isOn) {
-    return;
+    return true;
   }
 
   hasState_ = true;
@@ -17,6 +17,7 @@ void VirtualSocketOutput::setState(bool isOn) {
   } else {
     core::Logger::info("[CONTROL] Virtuelle Steckdose AUS");
   }
+  return true;
 }
 
 }  // namespace solarpilot::output

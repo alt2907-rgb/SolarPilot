@@ -55,11 +55,13 @@ SurplusSwitchController surplusSwitchController(
                         AppConfig::kSurplusSwitchOffThresholdW,
                         AppConfig::kSurplusSwitchOnDelayMs,
                         AppConfig::kSurplusSwitchOffDelayMs,
+                        AppConfig::kSurplusSwitchOutputRetryDelayMs,
                         AppConfig::kSurplusSwitchFailSafeTimeoutMs},
     selectOutput());
 InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
+bool shellyFailureSimulationEnabled = false;
 
 enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
 enum class AutomaticTestPhase {
@@ -123,6 +125,19 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
   if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
     Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
     runShellyDiscoveryOnce();
+    return;
+  }
+
+  if (strcmp(command, "TX") == 0) {
+    if (!AppConfig::kShellyOutputEnabled) {
+      Logger::warn(
+          "[TESTMODE] TX benötigt den konfigurierten Shelly-Ausgang.");
+      return;
+    }
+    shellyFailureSimulationEnabled = !shellyFailureSimulationEnabled;
+    shellyPlugOutput.setTestFailureEnabled(shellyFailureSimulationEnabled);
+    Logger::infof("[TESTMODE] Shelly-Fehlersimulation %s.",
+                  shellyFailureSimulationEnabled ? "aktiviert" : "deaktiviert");
     return;
   }
 
@@ -275,7 +290,9 @@ void setup() {
   Logger::begin();
   delay(200);
   Logger::info("SolarPilot startet...");
-  Logger::info("D = Shelly-Discovery erneut ausführen");
+  Logger::info(
+      "D = Shelly-Discovery erneut ausführen | TX = Shelly-Fehlersimulation "
+      "umschalten");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");

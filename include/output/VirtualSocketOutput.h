@@ -6,7 +6,7 @@ namespace solarpilot::output {
 
 class VirtualSocketOutput final : public ISwitchOutput {
  public:
-  void setState(bool isOn) override;
+  bool setState(bool isOn) override;
 
  private:
   bool hasState_ = false;
