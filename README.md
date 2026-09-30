@@ -70,6 +70,32 @@ Lokale ESP32-C3-Anwendung zur Kommunikation mit GoodWe-Wechselrichtern, aktuell 
 
 Für den Windows-Serial-Monitor und die Fehlersuche nach einer längeren Pause siehe [docs/development-runbook.md](docs/development-runbook.md) und den Helfer [tools/serial-monitor.ps1](tools/serial-monitor.ps1).
 
+## Entwicklungs-Testmodus für die Überschusssteuerung
+
+Die Befehle werden im Serial Monitor mit `115200` Baud zeilenweise nach Enter ausgewertet. GoodWe wird weiterhin normal initialisiert. Bei `T<number>` werden GoodWe-Lesevorgänge weiterhin ausgeführt, aber der eingegebene Wert wird ausschließlich an den normalen `SurplusSwitchController` übergeben. Der Modus liegt nur im RAM; nach Reset oder Neustart sind wieder echte GoodWe-Werte aktiv.
+
+| Befehl | Wirkung |
+| --- | --- |
+| `T100` | Testmodus mit simulierten `+100 W` Netzleistung aktivieren |
+| `T0` | Im manuellen Testmodus `0 W` einspeisen |
+| `T-400` | Im manuellen Testmodus `-400 W` einspeisen |
+| `T-` | Testmodus beenden und sofort wieder echte GoodWe-Messwerte für die Regelung verwenden |
+| `TA` | Nicht blockierenden EIN/AUS-Zyklus mit den konfigurierten Schwellen und Verzögerungen starten; danach automatische Rückkehr zu GoodWe |
+| `TF` | GoodWe-Leseausfall simulieren und den unveränderten Fail-safe-Pfad testen; kein Leistungswert wird eingespeist |
+| `D` oder `d` | Shelly-mDNS-Discovery wie bisher erneut ausführen |
+
+Simulierte Werte und Phasen sind im Log mit `[TESTMODE]` gekennzeichnet. `TA` lässt den Controller zunächst einen Wert unter der EIN-Schwelle, danach lange genug Überschuss für die normale EIN-Verzögerung und anschließend einen Wert unter der AUS-Schwelle für die normale AUS-Verzögerung sehen. Es schaltet den Shelly nie direkt.
+
+`TF` startet nur, wenn der Controller-Ausgang bereits EIN ist. Ist er AUS, erscheint ein Hinweis: zuerst mit `T100` und der normalen Einschaltverzögerung einschalten. Während `TF` wird kein GoodWe-Lesevorgang ausgeführt; jeder reguläre Lesezeitpunkt meldet stattdessen `noteReadFailure()`. Der vorhandene 30-s-Fail-safe schaltet den Ausgang über den normalen Controllerpfad aus. Danach verwendet die Regelung wieder echte GoodWe-Daten. Keine Testeinstellung wird in Flash/NVS gespeichert.
+
+### Konkreter Shelly-Hardwaretest
+
+1. Einen sicheren, beaufsichtigten Lastaufbau verwenden und sicherstellen, dass die Shelly-IP sowie `kLocalShellyOutputEnabled = true` korrekt konfiguriert sind. `T100` einschalten; etwa 15–20 Sekunden später muss `[SHELLY] Steckdose EIN` erscheinen und das Relais schalten.
+2. `T-400` senden. Etwa 10–15 Sekunden später muss `[SHELLY] Steckdose AUS` erscheinen. Mit `T0` kann im manuellen Modus ein Wert ohne Überschuss geprüft werden.
+3. Optional `TA` senden und den automatischen EIN/AUS-Zyklus anhand der `[TESTMODE]`- und `[SHELLY]`-Logs beobachten.
+4. Für den Fail-safe-Aus-Test zunächst wieder mit `T100` einschalten und danach `TF` senden. Der Ausgang muss nach dem vorhandenen 30-s-Timeout über den Controller ausgeschaltet werden.
+5. Mit `T-` jederzeit zum echten GoodWe-Regelbetrieb zurückkehren. Vor dem unbeaufsichtigten Betrieb sicherstellen, dass der Testmodus beendet ist; ein Reset aktiviert ebenfalls wieder den echten Betrieb.
+
 ## Ausgabemodus konfigurieren
 
 ### Testmodus (Standard, kein reales Gerät)

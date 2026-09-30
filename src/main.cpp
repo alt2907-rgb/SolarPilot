@@ -1,5 +1,9 @@
 #include <Arduino.h>
 
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "config/AppConfig.h"
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
@@ -57,7 +61,183 @@ InverterEndpoint inverter;
 bool inverterReady = false;
 uint32_t lastReadMs = 0;
 
+enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
+enum class AutomaticTestPhase {
+  kInactive,
+  kBaseline,
+  kOnQualification,
+  kOnHold,
+  kOffQualification
+};
+
+TestMode testMode = TestMode::kInactive;
+AutomaticTestPhase automaticTestPhase = AutomaticTestPhase::kInactive;
+float simulatedGridPowerW = 0.0F;
+uint32_t automaticTestPhaseStartedMs = 0;
+char serialLine[24] = {};
+size_t serialLineLength = 0;
+bool serialLineOverflow = false;
+
 ShellyDiscovery shellyDiscovery;
+
+void runShellyDiscoveryOnce();
+
+void endTestMode() {
+  testMode = TestMode::kInactive;
+  automaticTestPhase = AutomaticTestPhase::kInactive;
+  lastReadMs = millis() - AppConfig::kReadIntervalMs;
+  Logger::info("[TESTMODE] Beendet – echte GoodWe-Daten aktiv.");
+}
+
+void startManualTest(float gridPowerW) {
+  testMode = TestMode::kManual;
+  automaticTestPhase = AutomaticTestPhase::kInactive;
+  simulatedGridPowerW = gridPowerW;
+  Logger::infof("[TESTMODE] Aktiv – simulierte Netzleistung: %.1f W",
+                simulatedGridPowerW);
+}
+
+void startAutomaticTest(uint32_t nowMs) {
+  testMode = TestMode::kAutomatic;
+  automaticTestPhase = AutomaticTestPhase::kBaseline;
+  automaticTestPhaseStartedMs = nowMs;
+  Logger::info("[TESTMODE] TA gestartet: automatischer EIN/AUS-Zyklus.");
+}
+
+void startFailSafeTest() {
+  if (!surplusSwitchController.isOn()) {
+    Logger::warn(
+        "[TESTMODE] TF nicht gestartet: Ausgang ist AUS. Zuerst mit T100 "
+        "und normaler Einschaltverzögerung einschalten.");
+    return;
+  }
+
+  testMode = TestMode::kFailSafe;
+  automaticTestPhase = AutomaticTestPhase::kInactive;
+  Logger::info(
+      "[TESTMODE] TF gestartet: GoodWe-Leseausfall simuliert, kein "
+      "Leistungswert wird eingespeist.");
+}
+
+void handleSerialCommand(const char* command, uint32_t nowMs) {
+  if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
+    Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
+    runShellyDiscoveryOnce();
+    return;
+  }
+
+  if (strcmp(command, "T-") == 0) {
+    endTestMode();
+    return;
+  }
+  if (strcmp(command, "TA") == 0) {
+    startAutomaticTest(nowMs);
+    return;
+  }
+  if (strcmp(command, "TF") == 0) {
+    startFailSafeTest();
+    return;
+  }
+
+  if (command[0] == 'T' && command[1] != '\0') {
+    char* end = nullptr;
+    const float gridPowerW = strtof(command + 1, &end);
+    if (*end == '\0' && isfinite(gridPowerW)) {
+      startManualTest(gridPowerW);
+      return;
+    }
+  }
+
+  Logger::warn("Unbekannter Serial-Befehl.");
+}
+
+void handleSerialInput() {
+  while (Serial.available() > 0) {
+    const int incoming = Serial.read();
+    if (incoming == '\r' || incoming == '\n') {
+      if (serialLineOverflow) {
+        Logger::warn("Serial-Befehl zu lang und verworfen.");
+      } else if (serialLineLength > 0) {
+        serialLine[serialLineLength] = '\0';
+        handleSerialCommand(serialLine, millis());
+      }
+      serialLineLength = 0;
+      serialLineOverflow = false;
+    } else if (!serialLineOverflow) {
+      if (serialLineLength + 1 < sizeof(serialLine)) {
+        serialLine[serialLineLength++] = static_cast<char>(incoming);
+      } else {
+        serialLineOverflow = true;
+      }
+    }
+  }
+}
+
+void advanceAutomaticTest(uint32_t nowMs) {
+  if (testMode != TestMode::kAutomatic) {
+    return;
+  }
+
+  uint32_t phaseDurationMs = 0;
+  switch (automaticTestPhase) {
+    case AutomaticTestPhase::kBaseline:
+      phaseDurationMs = 2U * AppConfig::kReadIntervalMs;
+      break;
+    case AutomaticTestPhase::kOnQualification:
+      phaseDurationMs = AppConfig::kSurplusSwitchOnDelayMs +
+                        2U * AppConfig::kReadIntervalMs;
+      break;
+    case AutomaticTestPhase::kOnHold:
+      phaseDurationMs = 2U * AppConfig::kReadIntervalMs;
+      break;
+    case AutomaticTestPhase::kOffQualification:
+      phaseDurationMs = AppConfig::kSurplusSwitchOffDelayMs +
+                        2U * AppConfig::kReadIntervalMs;
+      break;
+    case AutomaticTestPhase::kInactive:
+      return;
+  }
+
+  if (static_cast<uint32_t>(nowMs - automaticTestPhaseStartedMs) <
+      phaseDurationMs) {
+    return;
+  }
+
+  automaticTestPhaseStartedMs = nowMs;
+  switch (automaticTestPhase) {
+    case AutomaticTestPhase::kBaseline:
+      automaticTestPhase = AutomaticTestPhase::kOnQualification;
+      Logger::info("[TESTMODE] TA: Überschuss oberhalb EIN-Schwelle.");
+      break;
+    case AutomaticTestPhase::kOnQualification:
+      automaticTestPhase = AutomaticTestPhase::kOnHold;
+      Logger::info("[TESTMODE] TA: EIN-Qualifikation beendet, kurzer Halt.");
+      break;
+    case AutomaticTestPhase::kOnHold:
+      automaticTestPhase = AutomaticTestPhase::kOffQualification;
+      Logger::info("[TESTMODE] TA: Wert unterhalb AUS-Schwelle.");
+      break;
+    case AutomaticTestPhase::kOffQualification:
+      endTestMode();
+      break;
+    case AutomaticTestPhase::kInactive:
+      break;
+  }
+}
+
+float automaticTestGridPowerW() {
+  switch (automaticTestPhase) {
+    case AutomaticTestPhase::kBaseline:
+    case AutomaticTestPhase::kOffQualification:
+      return AppConfig::kSurplusSwitchOffThresholdW - 100.0F;
+    case AutomaticTestPhase::kOnQualification:
+    case AutomaticTestPhase::kOnHold:
+      return AppConfig::kSurplusSwitchOnThresholdW + 100.0F;
+    case AutomaticTestPhase::kInactive:
+      return 0.0F;
+  }
+  return 0.0F;
+}
 
 // Milestone 4A: informative, one-shot mDNS discovery. Never switches
 // shellyPlugOutput automatically and never blocks GoodWe/Surplus setup;
@@ -131,23 +311,12 @@ void setup() {
   runShellyDiscoveryOnce();
 }
 
-// Manueller Entwicklungs-Trigger (Milestone 4A): 'd'/'D' über Serial löst
-// erneut runShellyDiscoveryOnce() aus. Kein periodisches Polling, keine
-// Auswirkung auf GoodWe-/Surplus-Ablauf in loop().
-void handleSerialDiscoveryTrigger() {
-  while (Serial.available() > 0) {
-    const int incoming = Serial.read();
-    if (incoming == 'd' || incoming == 'D') {
-      Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
-      runShellyDiscoveryOnce();
-    }
-  }
-}
-
 void loop() {
-  handleSerialDiscoveryTrigger();
+  handleSerialInput();
+  advanceAutomaticTest(millis());
 
-  if (!inverterReady || !wifiManager.isConnected()) {
+  if (!inverterReady ||
+      (!wifiManager.isConnected() && testMode != TestMode::kFailSafe)) {
     delay(1000);
     return;
   }
@@ -159,13 +328,35 @@ void loop() {
   }
   lastReadMs = nowMs;
 
-  float gridPowerW = 0.0F;
-  if (goodWeClient.readGridPowerW(gridPowerW)) {
-    consoleOutput.printGridPower(gridPowerW);
-    surplusSwitchController.update(gridPowerW, nowMs);
-  } else {
-    Logger::warn("Netzleistung konnte nicht gelesen werden.");
+  if (testMode == TestMode::kFailSafe) {
     surplusSwitchController.noteReadFailure(nowMs);
+    if (!surplusSwitchController.isOn()) {
+      endTestMode();
+    }
+    return;
   }
+
+  float gridPowerW = 0.0F;
+  const bool goodWeReadSucceeded = goodWeClient.readGridPowerW(gridPowerW);
+  if (testMode == TestMode::kInactive) {
+    if (goodWeReadSucceeded) {
+      consoleOutput.printGridPower(gridPowerW);
+      surplusSwitchController.update(gridPowerW, nowMs);
+    } else {
+      Logger::warn("Netzleistung konnte nicht gelesen werden.");
+      surplusSwitchController.noteReadFailure(nowMs);
+    }
+    return;
+  }
+
+  if (!goodWeReadSucceeded) {
+    Logger::warn("Netzleistung konnte nicht gelesen werden.");
+  }
+
+  gridPowerW = testMode == TestMode::kManual ? simulatedGridPowerW
+                                              : automaticTestGridPowerW();
+  Logger::infof("[TESTMODE] Aktiv – simulierte Netzleistung: %.1f W",
+                gridPowerW);
+  surplusSwitchController.update(gridPowerW, nowMs);
 }
 
