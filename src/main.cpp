@@ -130,14 +130,26 @@ bool recoverGoodWe(uint32_t nowMs) {
     return false;
   }
 
-  Logger::info("[RECOVERY] Suche GoodWe-Wechselrichter...");
+  Logger::info("[RECOVERY] Stelle GoodWe-Verbindung wieder her...");
   goodWeClient.resetConnection();
-  InverterEndpoint recoveredInverter;
-  if (!goodWeClient.discover(recoveredInverter,
-                             AppConfig::kInverterDiscoveryTimeoutMs) ||
-      !goodWeClient.connect(recoveredInverter)) {
-    Logger::warn("[RECOVERY] GoodWe noch nicht verfügbar; erneuter Versuch folgt.");
-    return false;
+
+  // Laufzeit-Timeouts bedeuten nicht automatisch, dass der Wechselrichter
+  // seine IP geändert hat. Zuerst den zuletzt bestätigten Endpoint direkt
+  // wiederverwenden; Broadcast-Discovery bleibt Fallback für Boot/IP-Wechsel.
+  InverterEndpoint recoveredInverter = inverter;
+  if (recoveredInverter.ip != IPAddress(0, 0, 0, 0) &&
+      goodWeClient.connect(recoveredInverter)) {
+    Logger::infof("[RECOVERY] Letzten GoodWe-Endpunkt wiederverwendet: %s",
+                  recoveredInverter.ip.toString().c_str());
+  } else {
+    Logger::info("[RECOVERY] Suche GoodWe-Wechselrichter per Broadcast...");
+    if (!goodWeClient.discover(recoveredInverter,
+                               AppConfig::kInverterDiscoveryTimeoutMs) ||
+        !goodWeClient.connect(recoveredInverter)) {
+      Logger::warn(
+          "[RECOVERY] GoodWe noch nicht verfügbar; erneuter Versuch folgt.");
+      return false;
+    }
   }
 
   inverter = recoveredInverter;
