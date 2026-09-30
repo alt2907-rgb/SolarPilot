@@ -66,6 +66,10 @@ bool SurplusSwitchController::isFailSafeShutdownPending() const {
   return failSafeShutdownPending_;
 }
 
+bool SurplusSwitchController::hasPendingOutputRetry() const {
+  return hasFailedOutputRequest_;
+}
+
 void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
   if (!isOn_ || !hasValidReading_) {
     return;
