@@ -20,7 +20,6 @@ constexpr size_t kActivePowerPayloadOffset =
 constexpr size_t kRuntimeResponseMinLength =
     kRuntimePayloadOffset + kActivePowerPayloadOffset + sizeof(int16_t) +
     kCrcLength;
-constexpr uint32_t kRuntimeResponseTimeoutMs = 1200;
 }  // namespace
 
 namespace solarpilot::inverter {
@@ -121,7 +120,7 @@ GoodWeClient::RuntimeAttemptResult GoodWeClient::requestRuntimeData(
   }
 
   const uint32_t startMs = millis();
-  while ((millis() - startMs) < kRuntimeResponseTimeoutMs) {
+  while ((millis() - startMs) < config::AppConfig::kGoodWeRuntimeResponseTimeoutMs) {
     const int packetSize = udp_.parsePacket();
     if (packetSize <= 0) {
       delay(20);
