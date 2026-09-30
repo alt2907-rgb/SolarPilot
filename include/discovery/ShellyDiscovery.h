@@ -15,6 +15,15 @@ namespace solarpilot::discovery {
 // change ShellyPlugOutput, does not persist anything, and never switches
 // outputs automatically. Results are plain data so they can later be reused
 // by a web UI "add device" flow.
+//
+// mDNS lifecycle: MDNSResponder::begin() calls the underlying esp-idf
+// mdns_init(), which is not safe to call repeatedly (a second call while
+// already initialized fails and can leave the mDNS/UDP state unstable,
+// which was observed to make subsequent GoodWe UDP broadcast discovery
+// fail too). ShellyDiscovery therefore starts mDNS at most once per
+// object lifetime (i.e. once per WiFi connection in practice) and simply
+// reuses it on every later discover() call, including repeated manual
+// triggers.
 class ShellyDiscovery {
  public:
   // Performs mDNS discovery and, for each found device (up to maxResults),
@@ -27,11 +36,16 @@ class ShellyDiscovery {
                   uint32_t mdnsTimeoutMs, uint32_t httpTimeoutMs);
 
  private:
+  // Starts mDNS exactly once; returns true if mDNS is (already) running.
+  bool ensureMdnsStarted();
+
   static bool fetchDeviceInfo(ShellyDeviceInfo& device, uint32_t timeoutMs);
   static bool extractJsonStringField(const String& json, const char* key,
                                      String& outValue);
   static bool extractJsonRawField(const String& json, const char* key,
                                   String& outValue);
+
+  bool mdnsStarted_ = false;
 };
 
 }  // namespace solarpilot::discovery

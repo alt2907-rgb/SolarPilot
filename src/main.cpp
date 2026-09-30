@@ -109,8 +109,10 @@ void setup() {
     return;
   }
 
-  runShellyDiscoveryOnce();
-
+  // GoodWe zuerst zuverlässig initialisieren: die informative Shelly-mDNS-
+  // Discovery läuft absichtlich erst danach (siehe runShellyDiscoveryOnce()
+  // weiter unten), damit ein mDNS-/Discovery-Problem niemals den GoodWe-Start
+  // verzögert oder beeinträchtigt.
   if (!goodWeClient.discover(inverter, AppConfig::kInverterDiscoveryTimeoutMs)) {
     Logger::error("Setup abgebrochen: GoodWe nicht gefunden.");
     return;
@@ -123,6 +125,10 @@ void setup() {
 
   inverterReady = true;
   Logger::info("Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
+
+  // Rein informativ und entkoppelt vom GoodWe-Kernbetrieb: ein Fehler hier
+  // (mDNS, RPC) darf inverterReady/den Regelbetrieb nicht mehr beeinflussen.
+  runShellyDiscoveryOnce();
 }
 
 // Manueller Entwicklungs-Trigger (Milestone 4A): 'd'/'D' über Serial löst
