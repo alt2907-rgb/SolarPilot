@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Preferences.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -88,9 +89,24 @@ size_t serialLineLength = 0;
 bool serialLineOverflow = false;
 
 ShellyDiscovery shellyDiscovery;
+Preferences shellyBindingPreferences;
+String boundShellyDeviceId;
 
 void runShellyDiscoveryOnce();
 bool bindConfiguredShellyFromDiscovery();
+
+void loadShellyBinding() {
+  if (!AppConfig::kShellyOutputEnabled) return;
+  if (!shellyBindingPreferences.begin("shelly-bind", false)) {
+    Logger::warn("[SHELLY-BINDING] Permanenter Speicher nicht verfügbar.");
+    return;
+  }
+  boundShellyDeviceId = shellyBindingPreferences.getString("device-id", "");
+  if (!boundShellyDeviceId.isEmpty()) {
+    Logger::infof("[SHELLY-BINDING] Gespeicherte Geräte-ID geladen: %s",
+                  boundShellyDeviceId.c_str());
+  }
+}
 
 bool recoverGoodWe(uint32_t nowMs) {
   if (!wifiManager.isConnected()) {
@@ -331,38 +347,37 @@ bool bindConfiguredShellyFromDiscovery() {
       AppConfig::kShellyDiscoveryMdnsTimeoutMs,
       AppConfig::kShellyDiscoveryHttpTimeoutMs);
 
-  // Backward-compatible migration: the configured host remains the fallback.
-  // If discovery proves which device currently owns that host, its stable ID
-  // is remembered for this boot. A later UI/persistence milestone will store
-  // that ID explicitly instead of deriving it from the legacy IP.
-  static String boundDeviceId;
-  if (boundDeviceId.isEmpty()) {
+  // Backward-compatible one-time migration: if no persistent binding exists,
+  // identify the device currently owning the legacy configured host and save
+  // its stable Shelly ID in ESP32 NVS. Future boots no longer depend on that IP.
+  if (boundShellyDeviceId.isEmpty()) {
     for (size_t i = 0; i < count; ++i) {
       if (devices[i].infoRetrieved &&
           devices[i].ip.toString() == String(AppConfig::kShellyHost)) {
-        boundDeviceId = devices[i].id;
-        Logger::infof("[SHELLY-BINDING] Gerät gebunden: id=%s",
-                      boundDeviceId.c_str());
+        boundShellyDeviceId = devices[i].id;
+        shellyBindingPreferences.putString("device-id", boundShellyDeviceId);
+        Logger::infof("[SHELLY-BINDING] Gerät dauerhaft gebunden: id=%s",
+                      boundShellyDeviceId.c_str());
         break;
       }
     }
   }
 
-  if (boundDeviceId.isEmpty()) {
+  if (boundShellyDeviceId.isEmpty()) {
     Logger::warn("[SHELLY-BINDING] Stabile Geräte-ID noch nicht ermittelt; feste Host-Konfiguration bleibt aktiv.");
     return false;
   }
 
   for (size_t i = 0; i < count; ++i) {
-    if (devices[i].infoRetrieved && devices[i].id == boundDeviceId) {
+    if (devices[i].infoRetrieved && devices[i].id == boundShellyDeviceId) {
       const String currentHost = devices[i].ip.toString();
       if (currentHost != String(shellyPlugOutput.host())) {
         Logger::infof("[SHELLY-BINDING] Neue IP für %s: %s",
-                      boundDeviceId.c_str(), currentHost.c_str());
+                      boundShellyDeviceId.c_str(), currentHost.c_str());
         shellyPlugOutput.setHost(currentHost.c_str());
       } else {
         Logger::infof("[SHELLY-BINDING] Gerät bestätigt: %s unter %s",
-                      boundDeviceId.c_str(), currentHost.c_str());
+                      boundShellyDeviceId.c_str(), currentHost.c_str());
       }
       return true;
     }
@@ -414,6 +429,7 @@ void setup() {
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
+    loadShellyBinding();
   } else {
     Logger::info("[CONFIG] Ausgabe: VirtualSocketOutput (Testmodus)");
   }
