@@ -32,7 +32,10 @@ GoodWeClient::GoodWeClient(uint16_t discoveryPort, uint16_t runtimePort)
       connected_(false),
       successfulReads_(0),
       failedReadCycles_(0),
-      totalRetryAttempts_(0) {}
+      totalRetryAttempts_(0),
+      unexpectedSenderPackets_(0),
+      invalidRuntimePackets_(0),
+      runtimeTimeouts_(0) {}
 
 bool GoodWeClient::discover(InverterEndpoint& endpoint, uint32_t timeoutMs) {
   if (!udp_.begin(0)) {
@@ -125,14 +128,28 @@ GoodWeClient::RuntimeAttemptResult GoodWeClient::requestRuntimeData(
       continue;
     }
 
+    const IPAddress remoteIp = udp_.remoteIP();
+    const uint16_t remotePort = udp_.remotePort();
+    if (remoteIp != inverterIp_ || remotePort != runtimePort_) {
+      ++unexpectedSenderPackets_;
+      core::Logger::warnf(
+          "GoodWe-Diagnose: fremdes UDP-Paket verworfen (von %s:%u, %d Byte).",
+          remoteIp.toString().c_str(), static_cast<unsigned>(remotePort),
+          packetSize);
+      udp_.flush();
+      continue;
+    }
+
     if (static_cast<size_t>(packetSize) > bufferSize) {
       core::Logger::error("Antwortpaket ist größer als der Puffer.");
+      ++invalidRuntimePackets_;
       udp_.flush();
       return RuntimeAttemptResult::kInvalidPacket;
     }
 
     const int bytesRead = udp_.read(responseBuffer, bufferSize);
     if (bytesRead <= 0) {
+      ++invalidRuntimePackets_;
       return RuntimeAttemptResult::kInvalidPacket;
     }
 
@@ -140,6 +157,7 @@ GoodWeClient::RuntimeAttemptResult GoodWeClient::requestRuntimeData(
     return RuntimeAttemptResult::kSuccess;
   }
 
+  ++runtimeTimeouts_;
   return RuntimeAttemptResult::kTimeout;
 }
 
@@ -166,6 +184,8 @@ const char* GoodWeClient::attemptResultToString(RuntimeAttemptResult result) {
       return "Zeitüberschreitung";
     case RuntimeAttemptResult::kInvalidPacket:
       return "ungültiges Paket";
+    case RuntimeAttemptResult::kUnexpectedSender:
+      return "fremder UDP-Absender";
     case RuntimeAttemptResult::kSuccess:
       return "erfolgreich";
   }
@@ -180,10 +200,14 @@ void GoodWeClient::logStatsIfDue() {
   }
   core::Logger::infof(
       "GoodWe-Statistik: erfolgreich=%lu, fehlgeschlagene Zyklen=%lu, "
-      "Wiederholversuche gesamt=%lu",
+      "Wiederholversuche gesamt=%lu, Timeouts=%lu, ungültige Pakete=%lu, "
+      "fremde UDP-Pakete=%lu",
       static_cast<unsigned long>(successfulReads_),
       static_cast<unsigned long>(failedReadCycles_),
-      static_cast<unsigned long>(totalRetryAttempts_));
+      static_cast<unsigned long>(totalRetryAttempts_),
+      static_cast<unsigned long>(runtimeTimeouts_),
+      static_cast<unsigned long>(invalidRuntimePackets_),
+      static_cast<unsigned long>(unexpectedSenderPackets_));
 }
 
 bool GoodWeClient::readGridPowerW(float& gridPowerW) {
