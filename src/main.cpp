@@ -90,6 +90,7 @@ bool serialLineOverflow = false;
 ShellyDiscovery shellyDiscovery;
 
 void runShellyDiscoveryOnce();
+bool bindConfiguredShellyFromDiscovery();
 
 bool recoverGoodWe(uint32_t nowMs) {
   if (!wifiManager.isConnected()) {
@@ -321,6 +322,56 @@ float automaticTestGridPowerW() {
   return 0.0F;
 }
 
+bool bindConfiguredShellyFromDiscovery() {
+  if (!AppConfig::kShellyOutputEnabled) return false;
+
+  ShellyDeviceInfo devices[AppConfig::kShellyDiscoveryMaxDevices];
+  const size_t count = shellyDiscovery.discover(
+      devices, AppConfig::kShellyDiscoveryMaxDevices,
+      AppConfig::kShellyDiscoveryMdnsTimeoutMs,
+      AppConfig::kShellyDiscoveryHttpTimeoutMs);
+
+  // Backward-compatible migration: the configured host remains the fallback.
+  // If discovery proves which device currently owns that host, its stable ID
+  // is remembered for this boot. A later UI/persistence milestone will store
+  // that ID explicitly instead of deriving it from the legacy IP.
+  static String boundDeviceId;
+  if (boundDeviceId.isEmpty()) {
+    for (size_t i = 0; i < count; ++i) {
+      if (devices[i].infoRetrieved &&
+          devices[i].ip.toString() == String(AppConfig::kShellyHost)) {
+        boundDeviceId = devices[i].id;
+        Logger::infof("[SHELLY-BINDING] Gerät gebunden: id=%s",
+                      boundDeviceId.c_str());
+        break;
+      }
+    }
+  }
+
+  if (boundDeviceId.isEmpty()) {
+    Logger::warn("[SHELLY-BINDING] Stabile Geräte-ID noch nicht ermittelt; feste Host-Konfiguration bleibt aktiv.");
+    return false;
+  }
+
+  for (size_t i = 0; i < count; ++i) {
+    if (devices[i].infoRetrieved && devices[i].id == boundDeviceId) {
+      const String currentHost = devices[i].ip.toString();
+      if (currentHost != String(shellyPlugOutput.host())) {
+        Logger::infof("[SHELLY-BINDING] Neue IP für %s: %s",
+                      boundDeviceId.c_str(), currentHost.c_str());
+        shellyPlugOutput.setHost(currentHost.c_str());
+      } else {
+        Logger::infof("[SHELLY-BINDING] Gerät bestätigt: %s unter %s",
+                      boundDeviceId.c_str(), currentHost.c_str());
+      }
+      return true;
+    }
+  }
+
+  Logger::warn("[SHELLY-BINDING] Gebundenes Gerät aktuell nicht per mDNS gefunden; letzter Host bleibt aktiv.");
+  return false;
+}
+
 // Milestone 4A: informative, one-shot mDNS discovery. Never switches
 // shellyPlugOutput automatically and never blocks GoodWe/Surplus setup;
 // on any failure it just logs and returns.
@@ -386,8 +437,9 @@ void setup() {
   if (inverterReady) {
     Logger::info(
         "Milestone 3 aktiv: Netzleistung wird gelesen und Ausgang gesteuert.");
-    // Rein informative Shelly-Discovery erst nach erfolgreichem GoodWe-Start.
-    runShellyDiscoveryOnce();
+    // Bindung läuft erst nach GoodWe, damit mDNS die Inverter-Initialisierung
+    // nicht beeinflusst. Die bisherige feste IP bleibt jederzeit Fallback.
+    bindConfiguredShellyFromDiscovery();
   } else {
     Logger::warn(
         "[RECOVERY] Start ohne GoodWe; automatische Wiederherstellung aktiv.");
@@ -437,6 +489,7 @@ void loop() {
     wifiWasConnected = true;
     Logger::info("[RECOVERY] WLAN wiederhergestellt.");
     lastGoodWeRecoveryAttemptMs = 0;
+    bindConfiguredShellyFromDiscovery();
 
     // War das WLAN lange genug weg, muss ein eingeschalteter Ausgang zuerst
     // wirklich AUS bestätigt werden, bevor normale Überschussdaten wieder
