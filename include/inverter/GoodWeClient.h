@@ -21,6 +21,7 @@ class GoodWeClient final : public IInverterClient {
     kSendFailed,
     kTimeout,
     kInvalidPacket,
+    kUnexpectedSender,
     kSuccess,
   };
 
@@ -45,6 +46,9 @@ class GoodWeClient final : public IInverterClient {
   uint32_t successfulReads_;
   uint32_t failedReadCycles_;
   uint32_t totalRetryAttempts_;
+  uint32_t unexpectedSenderPackets_;
+  uint32_t invalidRuntimePackets_;
+  uint32_t runtimeTimeouts_;
 };
 
 }  // namespace solarpilot::inverter
