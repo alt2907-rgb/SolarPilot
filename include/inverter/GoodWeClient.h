@@ -16,25 +16,12 @@ class GoodWeClient final : public IInverterClient {
   void resetConnection();
 
  private:
-  // Ergebnis eines einzelnen Laufzeit-Request-Versuchs, für Diagnose-Logging.
-  enum class RuntimeAttemptResult {
-    kSendFailed,
-    kTimeout,
-    kInvalidPacket,
-    kUnexpectedSender,
-    kSuccess,
-  };
-
   static uint16_t checksum(const uint8_t* data, size_t len);
   static int16_t readInt16(const uint8_t* data, size_t offset);
   static void printHexDump(const uint8_t* data, size_t len);
-  static const char* attemptResultToString(RuntimeAttemptResult result);
 
-  void discardStalePackets();
-  RuntimeAttemptResult requestRuntimeData(uint8_t* responseBuffer,
-                                          size_t bufferSize,
-                                          size_t& responseLen);
-  void logStatsIfDue();
+  bool requestRuntimeData(uint8_t* responseBuffer, size_t bufferSize,
+                          size_t& responseLen);
 
   uint16_t discoveryPort_;
   uint16_t runtimePort_;
@@ -42,13 +29,6 @@ class GoodWeClient final : public IInverterClient {
   bool connected_;
   WiFiUDP udp_;
 
-  // Einfache Laufzeit-Kommunikationsstatistik (nur Zähler, keine Web-UI).
-  uint32_t successfulReads_;
-  uint32_t failedReadCycles_;
-  uint32_t totalRetryAttempts_;
-  uint32_t unexpectedSenderPackets_;
-  uint32_t invalidRuntimePackets_;
-  uint32_t runtimeTimeouts_;
 };
 
 }  // namespace solarpilot::inverter
