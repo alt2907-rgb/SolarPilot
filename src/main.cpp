@@ -64,6 +64,7 @@ bool inverterReady = false;
 uint32_t lastReadMs = 0;
 uint32_t lastWifiReconnectAttemptMs = 0;
 uint32_t lastGoodWeRecoveryAttemptMs = 0;
+uint32_t lastShellyRecoveryAttemptMs = 0;
 uint32_t wifiLostAtMs = 0;
 uint8_t consecutiveGoodWeFailedCycles = 0;
 bool wifiWasConnected = false;
@@ -102,6 +103,11 @@ void loadShellyBinding() {
     return;
   }
   boundShellyDeviceId = shellyBindingPreferences.getString("device-id", "");
+  const String lastHost = shellyBindingPreferences.getString("last-host", "");
+  if (!lastHost.isEmpty()) {
+    shellyPlugOutput.setHost(lastHost.c_str());
+    Logger::infof("[SHELLY-BINDING] Letzte bekannte IP geladen: %s", lastHost.c_str());
+  }
   if (!boundShellyDeviceId.isEmpty()) {
     Logger::infof("[SHELLY-BINDING] Gespeicherte Geräte-ID geladen: %s",
                   boundShellyDeviceId.c_str());
@@ -376,6 +382,7 @@ bool bindConfiguredShellyFromDiscovery() {
           devices[i].ip.toString() == String(AppConfig::kShellyHost)) {
         boundShellyDeviceId = devices[i].id;
         shellyBindingPreferences.putString("device-id", boundShellyDeviceId);
+        shellyBindingPreferences.putString("last-host", devices[i].ip.toString());
         Logger::infof("[SHELLY-BINDING] Gerät dauerhaft gebunden: id=%s",
                       boundShellyDeviceId.c_str());
         break;
@@ -389,8 +396,11 @@ bool bindConfiguredShellyFromDiscovery() {
   }
 
   for (size_t i = 0; i < count; ++i) {
-    if (devices[i].infoRetrieved && devices[i].id == boundShellyDeviceId) {
+    const bool idMatches = devices[i].infoRetrieved && devices[i].id == boundShellyDeviceId;
+    const bool hostnameMatches = devices[i].hostname == boundShellyDeviceId;
+    if (idMatches || hostnameMatches) {
       const String currentHost = devices[i].ip.toString();
+      shellyBindingPreferences.putString("last-host", currentHost);
       if (currentHost != String(shellyPlugOutput.host())) {
         Logger::infof("[SHELLY-BINDING] Neue IP für %s: %s",
                       boundShellyDeviceId.c_str(), currentHost.c_str());
@@ -541,6 +551,17 @@ void loop() {
         return;
       }
     }
+  }
+
+  // Self-healing Shelly endpoint: after a failed physical switch request,
+  // re-resolve the bound device before the controller's next retry.
+  if (AppConfig::kShellyOutputEnabled &&
+      surplusSwitchController.hasPendingOutputRetry() &&
+      (lastShellyRecoveryAttemptMs == 0 ||
+       static_cast<uint32_t>(nowMs - lastShellyRecoveryAttemptMs) >= 5000U)) {
+    lastShellyRecoveryAttemptMs = nowMs;
+    Logger::info("[SHELLY-RECOVERY] Schaltfehler erkannt; gebundenes Gerät wird neu aufgelöst.");
+    bindConfiguredShellyFromDiscovery();
   }
 
   if (!inverterReady) {
