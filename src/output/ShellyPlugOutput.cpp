@@ -1,5 +1,6 @@
 #include "output/ShellyPlugOutput.h"
 
+#include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 
@@ -25,7 +26,7 @@ bool ShellyPlugOutput::setState(bool isOn) {
   char url[128];
   snprintf(url, sizeof(url),
            "http://%s/rpc/Switch.Set?id=%u&on=%s",
-           host_, switchId_, isOn ? "true" : "false");
+           host_.c_str(), switchId_, isOn ? "true" : "false");
 
   for (uint8_t attempt = 1; attempt <= kMaxSetStateAttempts; ++attempt) {
     int httpCode = -1;
@@ -84,5 +85,13 @@ bool ShellyPlugOutput::setState(bool isOn) {
 void ShellyPlugOutput::setTestFailureEnabled(bool enabled) {
   testFailureEnabled_ = enabled;
 }
+
+void ShellyPlugOutput::setHost(const char* host) {
+  if (host == nullptr || host[0] == '\0') return;
+  host_ = host;
+  hasState_ = false;
+}
+
+const char* ShellyPlugOutput::host() const { return host_.c_str(); }
 
 }  // namespace solarpilot::output
