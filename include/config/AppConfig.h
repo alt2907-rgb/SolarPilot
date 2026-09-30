@@ -31,7 +31,10 @@ struct AppConfig {
   static constexpr const char* kWifiPassword = kLocalWifiPassword;
 
   static constexpr uint32_t kWifiConnectTimeoutMs = 20000;
+  static constexpr uint32_t kWifiReconnectIntervalMs = 10000;
   static constexpr uint32_t kInverterDiscoveryTimeoutMs = 5000;
+  static constexpr uint32_t kGoodWeRecoveryIntervalMs = 15000;
+  static constexpr uint8_t kGoodWeFailedCyclesBeforeRecovery = 5;
   static constexpr uint32_t kReadIntervalMs = 5000;
 
   static constexpr uint16_t kGoodWeDiscoveryPort = 48899;
