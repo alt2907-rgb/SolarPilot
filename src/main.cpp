@@ -434,6 +434,13 @@ void loop() {
 
   if (!inverterReady) {
     surplusSwitchController.noteReadFailure(nowMs);
+    // Sobald der Fail-safe ein bestätigtes AUS verlangt, darf eine neue
+    // GoodWe-Messung diesen Pending-Zustand nicht durch update() aufheben.
+    // Erst nach erfolgreichem physischem AUS wird die Recovery fortgesetzt.
+    if (surplusSwitchController.isFailSafeShutdownPending()) {
+      delay(100);
+      return;
+    }
     recoverGoodWe(nowMs);
     delay(100);
     return;
