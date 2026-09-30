@@ -10,6 +10,8 @@ namespace {
 constexpr char kShellyMdnsService[] = "shelly";
 constexpr char kShellyMdnsProto[] = "tcp";
 constexpr char kShellyRpcDeviceInfoPath[] = "/rpc/Shelly.GetDeviceInfo";
+constexpr uint8_t kDeviceInfoMaxAttempts = 3;
+constexpr uint32_t kDeviceInfoRetryDelayMs = 250;
 }  // namespace
 
 namespace solarpilot::discovery {
@@ -88,25 +90,36 @@ bool ShellyDiscovery::ensureMdnsStarted() {
 
 bool ShellyDiscovery::fetchDeviceInfo(ShellyDeviceInfo& device,
                                       uint32_t timeoutMs) {
-  HTTPClient http;
   char url[96];
   snprintf(url, sizeof(url), "http://%s%s", device.ip.toString().c_str(),
            kShellyRpcDeviceInfoPath);
 
-  http.begin(url);
-  http.setTimeout(static_cast<int>(timeoutMs));
-
-  const int httpCode = http.GET();
-  if (httpCode != HTTP_CODE_OK) {
+  String body;
+  int lastHttpCode = -1;
+  for (uint8_t attempt = 1; attempt <= kDeviceInfoMaxAttempts; ++attempt) {
+    HTTPClient http;
+    if (http.begin(url)) {
+      http.setTimeout(static_cast<int>(timeoutMs));
+      lastHttpCode = http.GET();
+      if (lastHttpCode == HTTP_CODE_OK) {
+        body = http.getString();
+        http.end();
+        break;
+      }
+    }
     http.end();
-    core::Logger::infof(
-        "[SHELLY-DISCOVERY] Geräteinfo nicht abrufbar (%s, HTTP %d).",
-        device.ip.toString().c_str(), httpCode);
-    return false;
+    if (attempt < kDeviceInfoMaxAttempts) {
+      delay(kDeviceInfoRetryDelayMs);
+    }
   }
 
-  const String body = http.getString();
-  http.end();
+  if (lastHttpCode != HTTP_CODE_OK) {
+    core::Logger::infof(
+        "[SHELLY-DISCOVERY] Geräteinfo nach %u Versuchen nicht abrufbar (%s, HTTP %d).",
+        static_cast<unsigned>(kDeviceInfoMaxAttempts),
+        device.ip.toString().c_str(), lastHttpCode);
+    return false;
+  }
 
   extractJsonStringField(body, "id", device.id);
   extractJsonStringField(body, "mac", device.mac);
