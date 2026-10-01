@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Preferences.h>
+#include <WiFi.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -229,7 +230,24 @@ void startFailSafeTest() {
       "Leistungswert wird eingespeist.");
 }
 
+void logWifiLinkDiagnostic() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Logger::warn("[WIFI-DIAG] WLAN ist aktuell nicht verbunden.");
+    return;
+  }
+
+  const String bssid = WiFi.BSSIDstr();
+  Logger::infof(
+      "[WIFI-DIAG] SSID=%s | RSSI=%d dBm | BSSID=%s | Kanal=%d | IP=%s | Gateway=%s",
+      WiFi.SSID().c_str(), WiFi.RSSI(), bssid.c_str(), WiFi.channel(),
+      WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str());
+}
+
 void handleSerialCommand(const char* command, uint32_t nowMs) {
+  if (strcmp(command, "W") == 0 || strcmp(command, "w") == 0) {
+    logWifiLinkDiagnostic();
+    return;
+  }
   if (strcmp(command, "TB") == 0) {
     if (!AppConfig::kShellyOutputEnabled) {
       Logger::warn("[SHELLY-BINDING] TB: Shelly-Ausgang ist nicht aktiviert.");
@@ -508,7 +526,7 @@ void setup() {
   delay(200);
   Logger::info("SolarPilot startet...");
   Logger::info(
-      "D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
+      "W = WLAN-Linkdiagnose | D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
       "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation | "
       "TB = Shelly-Bindung prüfen | TS = Shelly-Endpunkt-Recovery testen");
 
