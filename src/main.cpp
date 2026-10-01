@@ -70,6 +70,8 @@ uint32_t lastReadMs = 0;
 uint32_t lastWifiReconnectAttemptMs = 0;
 uint32_t lastGoodWeRecoveryAttemptMs = 0;
 uint32_t wifiLostAtMs = 0;
+uint8_t wifiReconnectAttempts = 0;
+constexpr uint8_t kWifiReconnectAttemptsBeforeRestart = 3;
 uint8_t consecutiveGoodWeFailedCycles = 0;
 bool wifiWasConnected = false;
 bool forceGoodWeDiscoveryOnRecovery = false;
@@ -848,8 +850,15 @@ void loop() {
             "absichtlich unterbrochen.");
         wifiManager.disconnectForTest();
       } else {
-        Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
-        wifiManager.requestReconnect();
+        ++wifiReconnectAttempts;
+        if (wifiReconnectAttempts >= kWifiReconnectAttemptsBeforeRestart) {
+          Logger::warn("[RECOVERY] Mehrere WLAN-Reconnects erfolglos; harter WLAN-Neustart.");
+          wifiManager.restartStation(AppConfig::kWifiSsid, AppConfig::kWifiPassword);
+          wifiReconnectAttempts = 0;
+        } else {
+          Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
+          wifiManager.requestReconnect();
+        }
       }
     }
     delay(100);
@@ -858,6 +867,7 @@ void loop() {
 
   if (!wifiWasConnected) {
     wifiWasConnected = true;
+    wifiReconnectAttempts = 0;
     Logger::info("[RECOVERY] WLAN wiederhergestellt.");
     startStatusWebServer();
     lastGoodWeRecoveryAttemptMs = 0;
