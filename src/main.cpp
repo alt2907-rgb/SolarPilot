@@ -141,6 +141,22 @@ void handleStatusPage() {
   html += health.goodWeConnected ? "verbunden" : "nicht verbunden";
   html += F("</td></tr><tr><td>GoodWe-Fehlerzyklen</td><td>");
   html += String(health.goodWeFailedCycles);
+  html += F("</td></tr><tr><td>GoodWe erfolgreiche Reads</td><td>");
+  html += String(goodWeClient.successfulReads());
+  html += F("</td></tr><tr><td>GoodWe Retry-Versuche</td><td>");
+  html += String(goodWeClient.totalRetryAttempts());
+  html += F("</td></tr><tr><td>GoodWe Timeouts</td><td>");
+  html += String(goodWeClient.runtimeTimeouts());
+  html += F("</td></tr><tr><td>Antwortzeit zuletzt / &Oslash; / max</td><td>");
+  html += String(goodWeClient.lastResponseTimeMs());
+  html += " / ";
+  html += String(goodWeClient.averageResponseTimeMs());
+  html += " / ";
+  html += String(goodWeClient.maxResponseTimeMs());
+  html += F(" ms</td></tr><tr><td>Ungueltige / fremde UDP-Pakete</td><td>");
+  html += String(goodWeClient.invalidRuntimePackets());
+  html += " / ";
+  html += String(goodWeClient.unexpectedSenderPackets());
   html += F("</td></tr><tr><td>Letzter Messwert</td><td>");
   if (health.hasValidGoodWeReading) {
     html += String(health.lastValidGoodWeAgeMs / 1000U);
@@ -362,16 +378,6 @@ void handleSerialCommand(const char* command, uint32_t nowMs) {
   if (strcmp(command, "D") == 0 || strcmp(command, "d") == 0) {
     Logger::info("[SHELLY-DISCOVERY] Manuell ausgelöst über Serial ('D').");
     runShellyDiscoveryOnce();
-    return;
-  }
-
-  if (strcmp(command, "TS") == 0) {
-    if (!AppConfig::kShellyOutputEnabled || boundShellyDeviceId.isEmpty()) {
-      Logger::warn("[TESTMODE] TS benötigt einen dauerhaft gebundenen Shelly.");
-      return;
-    }
-    shellyPlugOutput.setHost("192.0.2.1");
-    Logger::info("[TESTMODE] TS: Shelly-Endpunkt absichtlich auf Test-IP 192.0.2.1 gesetzt. Nächster echter Schaltvorgang muss Self-Healing auslösen.");
     return;
   }
 
@@ -619,7 +625,7 @@ void setup() {
   Logger::info(
       "W = WLAN-Linkdiagnose | D = Shelly-Discovery | TW = WLAN-Verlustsimulation | "
       "TG = GoodWe-Verlustsimulation | TX = Shelly-Fehlersimulation | "
-      "TB = Shelly-Bindung prüfen | TS = Shelly-Endpunkt-Recovery testen");
+      "TB = Shelly-Bindung pruefen");
 
   if (AppConfig::kShellyOutputEnabled) {
     Logger::info("[CONFIG] Ausgabe: Shelly Plug M Gen3 (LAN)");
