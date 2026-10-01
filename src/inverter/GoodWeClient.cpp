@@ -244,7 +244,7 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
   }
 
   ++failedReadCycles_;
-  core::Logger::warnf(
+  core::Logger::infof(
       "Keine Laufzeitdaten vom Wechselrichter (%s, %u Versuche).",
       attemptResultToString(lastResult), static_cast<unsigned>(maxAttempts));
   return false;
