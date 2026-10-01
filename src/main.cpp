@@ -87,7 +87,7 @@ bool otaUpdateInProgress = false;
 bool otaUpdateSucceeded = false;
 uint32_t lastHealthLogMs = 0;
 constexpr uint32_t kHealthLogIntervalMs = 60000U;
-constexpr uint32_t kNetworkPathProbeTimeoutMs = 1200U;
+constexpr uint32_t kNetworkPathProbeTimeoutMs = 400U;
 uint32_t networkProbeRuns = 0;
 uint32_t gatewayProbeSuccesses = 0;
 uint32_t shellyProbeSuccesses = 0;
@@ -148,7 +148,7 @@ void runNetworkPathDiagnostic() {
 
   const bool wifiStillConnected = WiFi.status() == WL_CONNECTED;
   Logger::infof(
-      "[NET-DIAG] GoodWe-Fehler | WLAN=%s | RSSI=%d dBm | Gateway=%s (%lu ms) | "
+      "[NET-DIAG] GoodWe-Fehler | WLAN=%s | RSSI=%d dBm | Gateway:80=%s (%lu ms) | "
       "Shelly=%s (%lu ms) | Probes=%lu",
       wifiStillConnected ? "OK" : "AUS",
       wifiStillConnected ? WiFi.RSSI() : 0,
@@ -250,7 +250,7 @@ void handleStatusPage() {
   html += F("</table></div><div class='card'><h2>Netzwerkdiagnose</h2><table>"
             "<tr><td>Diagnoseläufe bei GoodWe-Fehler</td><td>");
   html += String(networkProbeRuns);
-  html += F("</td></tr><tr><td>Gateway letzter Test</td><td>");
+  html += F("</td></tr><tr><td>Gateway TCP-Port 80 letzter Test</td><td>");
   if (networkProbeRuns == 0) {
     html += "noch keiner";
   } else {
@@ -259,7 +259,7 @@ void handleStatusPage() {
     html += String(lastGatewayProbeMs);
     html += " ms";
   }
-  html += F("</td></tr><tr><td>Gateway erfolgreich</td><td>");
+  html += F("</td></tr><tr><td>Gateway TCP-Port 80 erfolgreich</td><td>");
   html += String(gatewayProbeSuccesses);
   html += " / ";
   html += String(networkProbeRuns);
@@ -922,16 +922,23 @@ void loop() {
   const bool goodWeReadSucceeded =
       !goodWeLossSimulationEnabled && goodWeClient.readGridPowerW(gridPowerW);
   if (testMode == TestMode::kInactive) {
+    // Runtime retries can block for several seconds. Check safety with the
+    // current time before accepting a new reading or running diagnostic probes.
+    // A recovered reading must not cancel an unconfirmed fail-safe shutdown.
+    surplusSwitchController.noteReadFailure(millis());
+    if (surplusSwitchController.isFailSafeShutdownPending()) {
+      return;
+    }
     if (goodWeReadSucceeded) {
       systemHealth.noteGoodWeReading(millis());
       latestGridPowerW = gridPowerW;
       hasLatestGridPower = true;
       consoleOutput.printGridPower(gridPowerW);
-      surplusSwitchController.update(gridPowerW, nowMs);
+      surplusSwitchController.update(gridPowerW, millis());
     } else {
       Logger::warn("Netzleistung konnte nicht gelesen werden.");
       runNetworkPathDiagnostic();
-      surplusSwitchController.noteReadFailure(nowMs);
+      surplusSwitchController.noteReadFailure(millis());
       if (consecutiveGoodWeFailedCycles < 0xFFU) {
         ++consecutiveGoodWeFailedCycles;
       }
