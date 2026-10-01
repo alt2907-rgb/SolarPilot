@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Update.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -80,6 +81,8 @@ WebServer statusWebServer(80);
 float latestGridPowerW = 0.0F;
 bool hasLatestGridPower = false;
 bool statusWebServerStarted = false;
+bool otaUpdateInProgress = false;
+bool otaUpdateSucceeded = false;
 uint32_t lastHealthLogMs = 0;
 constexpr uint32_t kHealthLogIntervalMs = 60000U;
 
@@ -195,14 +198,84 @@ void handleStatusPage() {
     html += WiFi.gatewayIP().toString();
     html += F("</td></tr>");
   }
-  html += F("</table></div></body></html>");
+  html += F("</table></div><div class='card'><h2>Firmware</h2>"
+            "<p><a href='/update'>OTA-Update ueber WLAN</a></p></div></body></html>");
   statusWebServer.send(200, "text/html; charset=utf-8", html);
+}
+
+void handleOtaPage() {
+  String html;
+  html.reserve(1800);
+  html += F("<!doctype html><html lang='de'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>SolarPilot Update</title>"
+            "<style>body{font-family:system-ui,sans-serif;max-width:650px;margin:24px auto;padding:0 16px;background:#f5f5f5;color:#222}"
+            ".card{background:white;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #bbb}"
+            "button{padding:10px 16px;font-size:16px}</style></head><body>"
+            "<h1>SolarPilot Firmware-Update</h1><div class='card'>"
+            "<p>Lokales OTA-Update. Nur eine von PlatformIO erzeugte <b>firmware.bin</b> verwenden.</p>"
+            "<p>Während des Updates die Stromversorgung nicht trennen.</p>"
+            "<form method='POST' action='/update' enctype='multipart/form-data'>"
+            "<input type='file' name='firmware' accept='.bin,application/octet-stream' required><br><br>"
+            "<button type='submit'>Firmware installieren</button></form></div>"
+            "<p><a href='/'>Zurueck zum Status</a></p></body></html>");
+  statusWebServer.send(200, "text/html; charset=utf-8", html);
+}
+
+void handleOtaUpload() {
+  HTTPUpload& upload = statusWebServer.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    otaUpdateInProgress = true;
+    otaUpdateSucceeded = false;
+    Logger::infof("[OTA] Update gestartet: %s", upload.filename.c_str());
+    if (!upload.filename.endsWith(".bin")) {
+      Logger::warn("[OTA] Abgelehnt: Firmware-Datei muss auf .bin enden.");
+      Update.abort();
+      return;
+    }
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+      Logger::error("[OTA] Update konnte nicht initialisiert werden.");
+      return;
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (Update.isRunning() &&
+        Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      Logger::error("[OTA] Schreiben der Firmware fehlgeschlagen.");
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (Update.isRunning() && Update.end(true)) {
+      otaUpdateSucceeded = true;
+      Logger::infof("[OTA] Firmware erfolgreich geschrieben (%u Byte).",
+                    static_cast<unsigned>(upload.totalSize));
+    } else {
+      Logger::error("[OTA] Firmware-Validierung/Abschluss fehlgeschlagen.");
+    }
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    Update.abort();
+    Logger::warn("[OTA] Upload abgebrochen.");
+  }
+}
+
+void handleOtaFinished() {
+  const bool success = otaUpdateSucceeded && !Update.hasError();
+  statusWebServer.send(
+      success ? 200 : 500, "text/html; charset=utf-8",
+      success
+          ? "<!doctype html><html lang='de'><meta charset='utf-8'><body><h2>Update erfolgreich.</h2><p>SolarPilot startet neu...</p></body></html>"
+          : "<!doctype html><html lang='de'><meta charset='utf-8'><body><h2>Update fehlgeschlagen.</h2><p>Die bisherige Firmware bleibt aktiv.</p><p><a href='/update'>Zurueck</a></p></body></html>");
+  otaUpdateInProgress = false;
+  if (success) {
+    delay(500);
+    ESP.restart();
+  }
 }
 
 void startStatusWebServer() {
   if (statusWebServerStarted || !wifiManager.isConnected()) return;
   statusWebServer.on("/", HTTP_GET, handleStatusPage);
   statusWebServer.on("/status", HTTP_GET, handleStatusPage);
+  statusWebServer.on("/update", HTTP_GET, handleOtaPage);
+  statusWebServer.on("/update", HTTP_POST, handleOtaFinished, handleOtaUpload);
   statusWebServer.begin();
   statusWebServerStarted = true;
   Logger::infof("[WEB] Read-only Status: http://%s/",
@@ -666,6 +739,10 @@ void setup() {
 void loop() {
   handleSerialInput();
   if (statusWebServerStarted) statusWebServer.handleClient();
+  if (otaUpdateInProgress) {
+    delay(5);
+    return;
+  }
   advanceAutomaticTest(millis());
 
   const uint32_t nowMs = millis();
