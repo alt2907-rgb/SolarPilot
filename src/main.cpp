@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <WebServer.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -75,6 +76,10 @@ bool shellyFailureSimulationEnabled = false;
 bool goodWeLossSimulationEnabled = false;
 bool wifiLossSimulationEnabled = false;
 SystemHealth systemHealth;
+WebServer statusWebServer(80);
+float latestGridPowerW = 0.0F;
+bool hasLatestGridPower = false;
+bool statusWebServerStarted = false;
 uint32_t lastHealthLogMs = 0;
 constexpr uint32_t kHealthLogIntervalMs = 60000U;
 
@@ -101,6 +106,92 @@ String boundShellyDeviceId;
 
 void runShellyDiscoveryOnce();
 bool bindConfiguredShellyFromDiscovery();
+
+String htmlEscape(const String& value) {
+  String escaped = value;
+  escaped.replace("&", "&amp;");
+  escaped.replace("<", "&lt;");
+  escaped.replace(">", "&gt;");
+  escaped.replace("\"", "&quot;");
+  return escaped;
+}
+
+void handleStatusPage() {
+  const uint32_t nowMs = millis();
+  const bool wifiConnected = wifiManager.isConnected();
+  systemHealth.setGoodWeFailedCycles(consecutiveGoodWeFailedCycles);
+  const auto health = systemHealth.snapshot(
+      wifiConnected, inverterReady, AppConfig::kShellyOutputEnabled,
+      surplusSwitchController.hasPendingOutputRetry(), nowMs,
+      AppConfig::kSurplusSwitchFailSafeTimeoutMs);
+
+  String html;
+  html.reserve(3500);
+  html += F("<!doctype html><html lang='de'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<meta http-equiv='refresh' content='5'><title>SolarPilot Status</title>"
+            "<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#f5f5f5;color:#222}"
+            "h1{margin-bottom:4px}.card{background:white;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #bbb}"
+            "table{width:100%;border-collapse:collapse}td{padding:7px 4px;border-bottom:1px solid #eee}td:first-child{font-weight:600}"
+            ".ok{font-weight:700}</style></head><body><h1>SolarPilot</h1><div>Read-only Status &middot; Aktualisierung alle 5 s</div>");
+
+  html += F("<div class='card'><h2>System</h2><table><tr><td>Gesamtzustand</td><td class='ok'>");
+  html += SystemHealth::stateToString(health.overall);
+  html += F("</td></tr><tr><td>GoodWe</td><td>");
+  html += health.goodWeConnected ? "verbunden" : "nicht verbunden";
+  html += F("</td></tr><tr><td>GoodWe-Fehlerzyklen</td><td>");
+  html += String(health.goodWeFailedCycles);
+  html += F("</td></tr><tr><td>Letzter Messwert</td><td>");
+  if (health.hasValidGoodWeReading) {
+    html += String(health.lastValidGoodWeAgeMs / 1000U);
+    html += " s alt";
+  } else {
+    html += "noch keiner";
+  }
+  html += F("</td></tr><tr><td>Netzleistung</td><td>");
+  if (hasLatestGridPower) {
+    html += String(latestGridPowerW, 1);
+    html += " W";
+  } else {
+    html += "noch kein Wert";
+  }
+  html += F("</td></tr><tr><td>Ausgang</td><td>");
+  html += surplusSwitchController.isOn() ? "EIN" : "AUS";
+  html += F("</td></tr><tr><td>Shelly-Retry</td><td>");
+  html += health.outputRetryPending ? "JA" : "NEIN";
+  html += F("</td></tr></table></div>");
+
+  html += F("<div class='card'><h2>WLAN</h2><table><tr><td>Status</td><td>");
+  html += wifiConnected ? "verbunden" : "nicht verbunden";
+  html += F("</td></tr>");
+  if (wifiConnected) {
+    html += F("<tr><td>SSID</td><td>");
+    html += htmlEscape(WiFi.SSID());
+    html += F("</td></tr><tr><td>RSSI</td><td>");
+    html += String(WiFi.RSSI());
+    html += F(" dBm</td></tr><tr><td>BSSID / AP</td><td>");
+    html += htmlEscape(WiFi.BSSIDstr());
+    html += F("</td></tr><tr><td>Kanal</td><td>");
+    html += String(WiFi.channel());
+    html += F("</td></tr><tr><td>ESP-IP</td><td>");
+    html += WiFi.localIP().toString();
+    html += F("</td></tr><tr><td>Gateway</td><td>");
+    html += WiFi.gatewayIP().toString();
+    html += F("</td></tr>");
+  }
+  html += F("</table></div></body></html>");
+  statusWebServer.send(200, "text/html; charset=utf-8", html);
+}
+
+void startStatusWebServer() {
+  if (statusWebServerStarted || !wifiManager.isConnected()) return;
+  statusWebServer.on("/", HTTP_GET, handleStatusPage);
+  statusWebServer.on("/status", HTTP_GET, handleStatusPage);
+  statusWebServer.begin();
+  statusWebServerStarted = true;
+  Logger::infof("[WEB] Read-only Status: http://%s/",
+                WiFi.localIP().toString().c_str());
+}
 
 void logSystemHealth(uint32_t nowMs, bool wifiConnected) {
   if (lastHealthLogMs != 0 &&
@@ -552,6 +643,7 @@ void setup() {
   // Ein fehlender GoodWe beendet den Start nicht mehr dauerhaft. Der gleiche
   // Recovery-Pfad wird beim Boot und nach Laufzeitverlusten verwendet.
   lastGoodWeRecoveryAttemptMs = 0;
+  startStatusWebServer();
   recoverGoodWe(millis());
   if (inverterReady) {
     Logger::info(
@@ -567,6 +659,7 @@ void setup() {
 
 void loop() {
   handleSerialInput();
+  if (statusWebServerStarted) statusWebServer.handleClient();
   advanceAutomaticTest(millis());
 
   const uint32_t nowMs = millis();
@@ -607,6 +700,7 @@ void loop() {
   if (!wifiWasConnected) {
     wifiWasConnected = true;
     Logger::info("[RECOVERY] WLAN wiederhergestellt.");
+    startStatusWebServer();
     lastGoodWeRecoveryAttemptMs = 0;
 
     // War das WLAN lange genug weg, muss ein eingeschalteter Ausgang zuerst
@@ -661,6 +755,8 @@ void loop() {
   if (testMode == TestMode::kInactive) {
     if (goodWeReadSucceeded) {
       systemHealth.noteGoodWeReading(millis());
+      latestGridPowerW = gridPowerW;
+      hasLatestGridPower = true;
       consoleOutput.printGridPower(gridPowerW);
       surplusSwitchController.update(gridPowerW, nowMs);
     } else {
