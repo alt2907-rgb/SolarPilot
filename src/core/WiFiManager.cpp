@@ -41,6 +41,15 @@ void WiFiManager::requestReconnect() const {
   WiFi.reconnect();
 }
 
+void WiFiManager::restartStation(const char* ssid, const char* password) const {
+  Logger::warn("[RECOVERY] Starte WLAN-Interface vollstaendig neu...");
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+}
+
 void WiFiManager::disconnectForTest() const {
   WiFi.disconnect(false, false);
 }
