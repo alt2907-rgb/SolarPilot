@@ -144,10 +144,13 @@ void runNetworkPathDiagnostic() {
                       probeTcpEndpoint(shellyIp, 80, lastShellyProbeMs);
   if (lastShellyProbeOk) ++shellyProbeSuccesses;
 
+  const bool wifiStillConnected = WiFi.status() == WL_CONNECTED;
   Logger::infof(
-      "[NET-DIAG] GoodWe-Fehler | RSSI=%d dBm | Gateway=%s (%lu ms) | "
+      "[NET-DIAG] GoodWe-Fehler | WLAN=%s | RSSI=%d dBm | Gateway=%s (%lu ms) | "
       "Shelly=%s (%lu ms) | Probes=%lu",
-      WiFi.RSSI(), lastGatewayProbeOk ? "OK" : "FEHLER",
+      wifiStillConnected ? "OK" : "AUS",
+      wifiStillConnected ? WiFi.RSSI() : 0,
+      lastGatewayProbeOk ? "OK" : "FEHLER",
       static_cast<unsigned long>(lastGatewayProbeMs),
       lastShellyProbeOk ? "OK" : "FEHLER",
       static_cast<unsigned long>(lastShellyProbeMs),
