@@ -85,6 +85,14 @@ bool otaUpdateInProgress = false;
 bool otaUpdateSucceeded = false;
 uint32_t lastHealthLogMs = 0;
 constexpr uint32_t kHealthLogIntervalMs = 60000U;
+constexpr uint32_t kNetworkPathProbeTimeoutMs = 1200U;
+uint32_t networkProbeRuns = 0;
+uint32_t gatewayProbeSuccesses = 0;
+uint32_t shellyProbeSuccesses = 0;
+uint32_t lastGatewayProbeMs = 0;
+uint32_t lastShellyProbeMs = 0;
+bool lastGatewayProbeOk = false;
+bool lastShellyProbeOk = false;
 
 enum class TestMode { kInactive, kManual, kAutomatic, kFailSafe };
 enum class AutomaticTestPhase {
@@ -109,6 +117,42 @@ String boundShellyDeviceId;
 
 void runShellyDiscoveryOnce();
 bool bindConfiguredShellyFromDiscovery();
+
+bool probeTcpEndpoint(const IPAddress& ip, uint16_t port, uint32_t& elapsedMs) {
+  WiFiClient client;
+  client.setTimeout(kNetworkPathProbeTimeoutMs);
+  const uint32_t startedMs = millis();
+  const bool connected = client.connect(ip, port, kNetworkPathProbeTimeoutMs);
+  elapsedMs = millis() - startedMs;
+  client.stop();
+  return connected;
+}
+
+void runNetworkPathDiagnostic() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Logger::warn("[NET-DIAG] Uebersprungen: WLAN nicht verbunden.");
+    return;
+  }
+
+  ++networkProbeRuns;
+  const IPAddress gateway = WiFi.gatewayIP();
+  lastGatewayProbeOk = probeTcpEndpoint(gateway, 80, lastGatewayProbeMs);
+  if (lastGatewayProbeOk) ++gatewayProbeSuccesses;
+
+  IPAddress shellyIp;
+  lastShellyProbeOk = shellyIp.fromString(shellyPlugOutput.host()) &&
+                      probeTcpEndpoint(shellyIp, 80, lastShellyProbeMs);
+  if (lastShellyProbeOk) ++shellyProbeSuccesses;
+
+  Logger::infof(
+      "[NET-DIAG] GoodWe-Fehler | RSSI=%d dBm | Gateway=%s (%lu ms) | "
+      "Shelly=%s (%lu ms) | Probes=%lu",
+      WiFi.RSSI(), lastGatewayProbeOk ? "OK" : "FEHLER",
+      static_cast<unsigned long>(lastGatewayProbeMs),
+      lastShellyProbeOk ? "OK" : "FEHLER",
+      static_cast<unsigned long>(lastShellyProbeMs),
+      static_cast<unsigned long>(networkProbeRuns));
+}
 
 String htmlEscape(const String& value) {
   String escaped = value;
@@ -198,7 +242,36 @@ void handleStatusPage() {
     html += WiFi.gatewayIP().toString();
     html += F("</td></tr>");
   }
-  html += F("</table></div><div class='card'><h2>Firmware</h2>"
+  html += F("</table></div><div class='card'><h2>Netzwerkdiagnose</h2><table>"
+            "<tr><td>Diagnoseläufe bei GoodWe-Fehler</td><td>");
+  html += String(networkProbeRuns);
+  html += F("</td></tr><tr><td>Gateway letzter Test</td><td>");
+  if (networkProbeRuns == 0) {
+    html += "noch keiner";
+  } else {
+    html += lastGatewayProbeOk ? "OK" : "FEHLER";
+    html += " / ";
+    html += String(lastGatewayProbeMs);
+    html += " ms";
+  }
+  html += F("</td></tr><tr><td>Gateway erfolgreich</td><td>");
+  html += String(gatewayProbeSuccesses);
+  html += " / ";
+  html += String(networkProbeRuns);
+  html += F("</td></tr><tr><td>Shelly letzter Test</td><td>");
+  if (networkProbeRuns == 0) {
+    html += "noch keiner";
+  } else {
+    html += lastShellyProbeOk ? "OK" : "FEHLER";
+    html += " / ";
+    html += String(lastShellyProbeMs);
+    html += " ms";
+  }
+  html += F("</td></tr><tr><td>Shelly erfolgreich</td><td>");
+  html += String(shellyProbeSuccesses);
+  html += " / ";
+  html += String(networkProbeRuns);
+  html += F("</td></tr></table></div><div class='card'><h2>Firmware</h2>"
             "<p><a href='/update'>OTA-Update ueber WLAN</a></p></div></body></html>");
   statusWebServer.send(200, "text/html; charset=utf-8", html);
 }
@@ -844,6 +917,7 @@ void loop() {
       surplusSwitchController.update(gridPowerW, nowMs);
     } else {
       Logger::warn("Netzleistung konnte nicht gelesen werden.");
+      runNetworkPathDiagnostic();
       surplusSwitchController.noteReadFailure(nowMs);
       if (consecutiveGoodWeFailedCycles < 0xFFU) {
         ++consecutiveGoodWeFailedCycles;
