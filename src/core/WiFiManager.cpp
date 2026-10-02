@@ -1,16 +1,30 @@
 #include "core/WiFiManager.h"
 
 #include <WiFi.h>
+#include <atomic>
 
 #include "core/Logger.h"
 
 namespace solarpilot::core {
+namespace {
+std::atomic<unsigned> lastDisconnectReason{0};
+}
 
 bool WiFiManager::connect(const char* ssid, const char* password,
                           uint32_t timeoutMs) const {
   if (ssid == nullptr || ssid[0] == '\0') {
     Logger::error("WLAN-SSID fehlt. Bitte in AppConfig.h setzen.");
     return false;
+  }
+
+  static bool eventsRegistered = false;
+  if (!eventsRegistered) {
+    WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
+      // The callback runs on another task: only capture a number here. All
+      // serial/ring-buffer logging stays on the main loop task.
+      lastDisconnectReason.store(info.wifi_sta_disconnected.reason);
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+    eventsRegistered = true;
   }
 
   WiFi.mode(WIFI_STA);
@@ -38,6 +52,8 @@ bool WiFiManager::isConnected() const {
 void WiFiManager::requestReconnect() const {
   // WiFi.reconnect() only starts the station reconnect attempt; recovery is
   // observed asynchronously from loop(), so safety handling keeps running.
+  Logger::infof("[WLAN-DIAG] Statuscode=%d, letzter Abbruchgrund=%u",
+                static_cast<int>(WiFi.status()), lastDisconnectReason.load());
   WiFi.reconnect();
 }
 

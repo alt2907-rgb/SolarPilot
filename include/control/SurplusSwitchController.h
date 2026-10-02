@@ -36,6 +36,7 @@ class SurplusSwitchController {
   bool isOn() const;
   bool isFailSafeShutdownPending() const;
   bool hasPendingOutputRetry() const;
+  bool requestConfirmedOff();
 
  private:
   // Erwartet monotone Zeitbasis (z. B. millis()).

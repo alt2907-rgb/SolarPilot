@@ -4,3 +4,6 @@
 .vscode/*
 !.vscode/tasks.json
 include/config/LocalCredentials.h
+include/config/LocalAdminCredentials.h
+__pycache__/
+.local/

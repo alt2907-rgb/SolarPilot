@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include "config/AppConfig.h"
+#include "config/AdminConfig.h"
+#include "web/AdminPage.h"
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
 #include "core/SystemHealth.h"
@@ -168,196 +170,176 @@ String htmlEscape(const String& value) {
   return escaped;
 }
 
+uint32_t webTestStartedMs = 0;
+bool webTestActive = false;
+bool webGoodWeLossPending = false;
+uint32_t webTestDurationMs = 120000U;
+bool otaUploadAccepted = false;
+uint32_t otaLastActivityMs = 0;
+String adminToken;
+void handleSerialCommand(const char* command, uint32_t nowMs);
+void endTestMode();
+void logWifiLinkDiagnostic();
+
+bool requireAdmin() {
+  if (solarpilot::config::kAdminPassword[0] == '\0') {
+    statusWebServer.send(503, "text/plain; charset=utf-8", "Adminzugang noch nicht eingerichtet. Lokale Admin-Zugangsdaten konfigurieren.");
+    return false;
+  }
+  if (!statusWebServer.authenticate(solarpilot::config::kAdminUser, solarpilot::config::kAdminPassword)) {
+    statusWebServer.requestAuthentication(DIGEST_AUTH, "SolarPilot Administration");
+    return false;
+  }
+  return true;
+}
+bool requireActionToken() {
+  if (!requireAdmin()) return false;
+  if (adminToken.isEmpty() || statusWebServer.arg("token") != adminToken) {
+    statusWebServer.send(403, "text/plain; charset=utf-8", "Aktion abgelehnt. Adminseite neu laden und erneut versuchen.");
+    return false;
+  }
+  return true;
+}
 void handleStatusPage() {
-  const uint32_t nowMs = millis();
-  const bool wifiConnected = wifiManager.isConnected();
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.send_P(200, "text/html; charset=utf-8", solarpilot::web::kPage);
+}
+void handleAdminPage() {
+  if (requireAdmin()) handleStatusPage();
+}
+void handleStatusJson() {
+  const uint32_t now = millis();
   systemHealth.setGoodWeFailedCycles(consecutiveGoodWeFailedCycles);
-  const auto health = systemHealth.snapshot(
-      wifiConnected, inverterReady, AppConfig::kShellyOutputEnabled,
-      surplusSwitchController.hasPendingOutputRetry(), nowMs,
+  const auto health = systemHealth.snapshot(wifiManager.isConnected(), inverterReady,
+      AppConfig::kShellyOutputEnabled, surplusSwitchController.hasPendingOutputRetry(), now,
       AppConfig::kSurplusSwitchFailSafeTimeoutMs);
-
-  String html;
-  html.reserve(3500);
-  html += F("<!doctype html><html lang='de'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<meta http-equiv='refresh' content='5'><title>SolarPilot Status</title>"
-            "<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#f5f5f5;color:#222}"
-            "h1{margin-bottom:4px}.card{background:white;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #bbb}"
-            "table{width:100%;border-collapse:collapse}td{padding:7px 4px;border-bottom:1px solid #eee}td:first-child{font-weight:600}"
-            ".ok{font-weight:700}</style></head><body><h1>SolarPilot</h1><div>Read-only Status &middot; Aktualisierung alle 5 s</div>");
-
-  html += F("<div class='card'><h2>System</h2><table><tr><td>Gesamtzustand</td><td class='ok'>");
-  html += SystemHealth::stateToString(health.overall);
-  html += F("</td></tr><tr><td>GoodWe</td><td>");
-  html += health.goodWeConnected ? "verbunden" : "nicht verbunden";
-  html += F("</td></tr><tr><td>GoodWe-Fehlerzyklen</td><td>");
-  html += String(health.goodWeFailedCycles);
-  html += F("</td></tr><tr><td>GoodWe erfolgreiche Reads</td><td>");
-  html += String(goodWeClient.successfulReads());
-  html += F("</td></tr><tr><td>GoodWe Retry-Versuche</td><td>");
-  html += String(goodWeClient.totalRetryAttempts());
-  html += F("</td></tr><tr><td>GoodWe Timeouts</td><td>");
-  html += String(goodWeClient.runtimeTimeouts());
-  html += F("</td></tr><tr><td>Antwortzeit zuletzt / &Oslash; / max</td><td>");
-  html += String(goodWeClient.lastResponseTimeMs());
-  html += " / ";
-  html += String(goodWeClient.averageResponseTimeMs());
-  html += " / ";
-  html += String(goodWeClient.maxResponseTimeMs());
-  html += F(" ms</td></tr><tr><td>Ungueltige / fremde UDP-Pakete</td><td>");
-  html += String(goodWeClient.invalidRuntimePackets());
-  html += " / ";
-  html += String(goodWeClient.unexpectedSenderPackets());
-  html += F("</td></tr><tr><td>Letzter Messwert</td><td>");
-  if (health.hasValidGoodWeReading) {
-    html += String(health.lastValidGoodWeAgeMs / 1000U);
-    html += " s alt";
-  } else {
-    html += "noch keiner";
-  }
-  html += F("</td></tr><tr><td>Netzleistung</td><td>");
-  if (hasLatestGridPower) {
-    html += String(latestGridPowerW, 1);
-    html += " W";
-  } else {
-    html += "noch kein Wert";
-  }
-  html += F("</td></tr><tr><td>Ausgang</td><td>");
-  html += surplusSwitchController.isOn() ? "EIN" : "AUS";
-  html += F("</td></tr><tr><td>Shelly-Retry</td><td>");
-  html += health.outputRetryPending ? "JA" : "NEIN";
-  html += F("</td></tr></table></div>");
-
-  html += F("<div class='card'><h2>WLAN</h2><table><tr><td>Status</td><td>");
-  html += wifiConnected ? "verbunden" : "nicht verbunden";
-  html += F("</td></tr>");
-  if (wifiConnected) {
-    html += F("<tr><td>SSID</td><td>");
-    html += htmlEscape(WiFi.SSID());
-    html += F("</td></tr><tr><td>RSSI</td><td>");
-    html += String(WiFi.RSSI());
-    html += F(" dBm</td></tr><tr><td>BSSID / AP</td><td>");
-    html += htmlEscape(WiFi.BSSIDstr());
-    html += F("</td></tr><tr><td>Kanal</td><td>");
-    html += String(WiFi.channel());
-    html += F("</td></tr><tr><td>ESP-IP</td><td>");
-    html += WiFi.localIP().toString();
-    html += F("</td></tr><tr><td>Gateway</td><td>");
-    html += WiFi.gatewayIP().toString();
-    html += F("</td></tr>");
-  }
-  html += F("</table></div><div class='card'><h2>Netzwerkdiagnose</h2><table>"
-            "<tr><td>Diagnoseläufe bei GoodWe-Fehler</td><td>");
-  html += String(networkProbeRuns);
-  html += F("</td></tr><tr><td>Gateway TCP-Port 80 letzter Test</td><td>");
-  if (networkProbeRuns == 0) {
-    html += "noch keiner";
-  } else {
-    html += lastGatewayProbeOk ? "OK" : "FEHLER";
-    html += " / ";
-    html += String(lastGatewayProbeMs);
-    html += " ms";
-  }
-  html += F("</td></tr><tr><td>Gateway TCP-Port 80 erfolgreich</td><td>");
-  html += String(gatewayProbeSuccesses);
-  html += " / ";
-  html += String(networkProbeRuns);
-  html += F("</td></tr><tr><td>Shelly letzter Test</td><td>");
-  if (networkProbeRuns == 0) {
-    html += "noch keiner";
-  } else {
-    html += lastShellyProbeOk ? "OK" : "FEHLER";
-    html += " / ";
-    html += String(lastShellyProbeMs);
-    html += " ms";
-  }
-  html += F("</td></tr><tr><td>Shelly erfolgreich</td><td>");
-  html += String(shellyProbeSuccesses);
-  html += " / ";
-  html += String(networkProbeRuns);
-  html += F("</td></tr></table></div><div class='card'><h2>Firmware</h2>"
-            "<p><a href='/update'>OTA-Update ueber WLAN</a></p></div></body></html>");
-  statusWebServer.send(200, "text/html; charset=utf-8", html);
+  const char* state = health.overall == solarpilot::core::HealthState::kOk ? "In Ordnung" :
+      health.overall == solarpilot::core::HealthState::kDegraded ? "Eingeschraenkt" : "Nicht verfuegbar";
+  String json = "{\"health\":\"" + String(state) + "\",\"power\":" + String(latestGridPowerW, 1);
+  json += ",\"valid\":" + String(health.hasValidGoodWeReading && health.lastValidGoodWeAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs && !goodWeLossSimulationEnabled && wifiManager.isConnected() ? "true" : "false");
+  json += ",\"age\":" + (health.hasValidGoodWeReading ? String(health.lastValidGoodWeAgeMs) : String("null"));
+  json += ",\"on\":" + String(surplusSwitchController.isOn() ? "true" : "false");
+  json += ",\"real\":" + String(AppConfig::kShellyOutputEnabled ? "true" : "false");
+  json += ",\"pending\":" + String(surplusSwitchController.isFailSafeShutdownPending() ? "true" : "false");
+  json += ",\"retry\":" + String(health.outputRetryPending ? "true" : "false");
+  json += ",\"rssi\":" + (wifiManager.isConnected() ? String(WiFi.RSSI()) : String("null"));
+  json += ",\"goodwe\":" + String(inverterReady ? "true" : "false");
+  json += ",\"test\":" + String(testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled ? "true" : "false");
+  json += ",\"retries\":" + String(goodWeClient.totalRetryAttempts());
+  json += ",\"timeouts\":" + String(goodWeClient.runtimeTimeouts());
+  json += ",\"probes\":" + String(networkProbeRuns) + "}";
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.send(200, "application/json", json);
 }
-
-void handleOtaPage() {
-  String html;
-  html.reserve(1800);
-  html += F("<!doctype html><html lang='de'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>SolarPilot Update</title>"
-            "<style>body{font-family:system-ui,sans-serif;max-width:650px;margin:24px auto;padding:0 16px;background:#f5f5f5;color:#222}"
-            ".card{background:white;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #bbb}"
-            "button{padding:10px 16px;font-size:16px}</style></head><body>"
-            "<h1>SolarPilot Firmware-Update</h1><div class='card'>"
-            "<p>Lokales OTA-Update. Nur eine von PlatformIO erzeugte <b>firmware.bin</b> verwenden.</p>"
-            "<p>Während des Updates die Stromversorgung nicht trennen.</p>"
-            "<form method='POST' action='/update' enctype='multipart/form-data'>"
-            "<input type='file' name='firmware' accept='.bin,application/octet-stream' required><br><br>"
-            "<button type='submit'>Firmware installieren</button></form></div>"
-            "<p><a href='/'>Zurueck zum Status</a></p></body></html>");
-  statusWebServer.send(200, "text/html; charset=utf-8", html);
+void handleLogs() {
+  if (!requireAdmin()) return;
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.send(200, "application/json", "{\"token\":\"" + adminToken + "\",\"entries\":" + Logger::recentJson() + "}");
 }
-
+bool stopAllTests(bool clearOutputFailure = true) {
+  endTestMode();
+  goodWeLossSimulationEnabled = false;
+  wifiLossSimulationEnabled = false;
+  if (clearOutputFailure) {
+    shellyFailureSimulationEnabled = false;
+    shellyPlugOutput.setTestFailureEnabled(false);
+  }
+  webTestActive = false;
+  webGoodWeLossPending = false;
+  inverterReady = false;
+  lastGoodWeRecoveryAttemptMs = 0;
+  return surplusSwitchController.requestConfirmedOff();
+}
+void handleAdminAction() {
+  if (!requireActionToken()) return;
+  const String command = statusWebServer.arg("command");
+  if (command == "diagnose") {
+    logWifiLinkDiagnostic();
+    runNetworkPathDiagnostic();
+    statusWebServer.send(200, "text/plain; charset=utf-8", "Verbindungen geprüft. Ergebnisse stehen im Live-Protokoll.");
+    return;
+  }
+  if (command == "stop" || command == "restart") {
+    const bool confirmed = stopAllTests();
+    if (!confirmed) {
+      statusWebServer.send(409, "text/plain; charset=utf-8", "Tests beendet. AUS noch nicht bestätigt; weitere Versuche laufen. Neustart wurde nicht ausgeführt.");
+      return;
+    }
+    statusWebServer.send(200, "text/plain; charset=utf-8", command == "restart" ? "AUS bestätigt. SolarPilot startet neu." : "Alle Tests beendet. Steckdose AUS bestätigt.");
+    if (command == "restart") { delay(300); ESP.restart(); }
+    return;
+  }
+  if (command != "cycle" && command != "goodwe-loss" && command != "switch-failure" && command != "wifi-loss") {
+    statusWebServer.send(400, "text/plain; charset=utf-8", "Unbekannte Aktion."); return;
+  }
+  if (!stopAllTests()) {
+    statusWebServer.send(409, "text/plain; charset=utf-8", "Test abgelehnt: AUS konnte nicht bestätigt werden."); return;
+  }
+  if (command == "switch-failure" && !AppConfig::kShellyOutputEnabled) {
+    statusWebServer.send(409, "text/plain; charset=utf-8", "Kein realer Shelly-Ausgang konfiguriert."); return;
+  }
+  if (command == "cycle") handleSerialCommand("TA", millis());
+  if (command == "goodwe-loss") {
+    handleSerialCommand("T100", millis());
+    webGoodWeLossPending = true;
+  }
+  if (command == "switch-failure") { handleSerialCommand("TX", millis()); handleSerialCommand("TA", millis()); }
+  webTestDurationMs = command == "wifi-loss" ? 40000U : 120000U;
+  if (command == "wifi-loss") handleSerialCommand("TW", millis());
+  webTestStartedMs = millis(); webTestActive = true;
+  Logger::info("[WEB] Test gestartet; zeitlich begrenzter Test.");
+  statusWebServer.send(200, "text/plain; charset=utf-8", "Test gestartet. Automatisches Ende nach spätestens zwei Minuten. Ergebnisse im Live-Protokoll.");
+}
 void handleOtaUpload() {
   HTTPUpload& upload = statusWebServer.upload();
   if (upload.status == UPLOAD_FILE_START) {
-    otaUpdateInProgress = true;
-    otaUpdateSucceeded = false;
-    Logger::infof("[OTA] Update gestartet: %s", upload.filename.c_str());
-    if (!upload.filename.endsWith(".bin")) {
-      Logger::warn("[OTA] Abgelehnt: Firmware-Datei muss auf .bin enden.");
-      Update.abort();
-      return;
+    otaUploadAccepted = false; otaUpdateSucceeded = false;
+    if (!requireActionToken()) return;
+    if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); return; }
+    const bool offConfirmed = stopAllTests(false);
+    shellyFailureSimulationEnabled = false;
+    shellyPlugOutput.setTestFailureEnabled(false);
+    if (!offConfirmed) { Logger::error("[OTA] Abgelehnt: physisches AUS nicht bestaetigt."); return; }
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) { Logger::error("[OTA] Update konnte nicht gestartet werden."); return; }
+    otaUploadAccepted = true; otaUpdateInProgress = true;
+    otaLastActivityMs = millis();
+    Logger::info("[OTA] AUS bestaetigt. Softwareuebertragung gestartet.");
+  } else if (otaUploadAccepted && upload.status == UPLOAD_FILE_WRITE) {
+    otaLastActivityMs = millis();
+    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      Update.abort(); otaUploadAccepted = false; otaUpdateInProgress = false;
+      Logger::error("[OTA] Schreibfehler. Update abgebrochen.");
     }
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-      Logger::error("[OTA] Update konnte nicht initialisiert werden.");
-      return;
-    }
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (Update.isRunning() &&
-        Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-      Logger::error("[OTA] Schreiben der Firmware fehlgeschlagen.");
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (Update.isRunning() && Update.end(true)) {
-      otaUpdateSucceeded = true;
-      Logger::infof("[OTA] Firmware erfolgreich geschrieben (%u Byte).",
-                    static_cast<unsigned>(upload.totalSize));
-    } else {
-      Logger::error("[OTA] Firmware-Validierung/Abschluss fehlgeschlagen.");
-    }
+  } else if (otaUploadAccepted && upload.status == UPLOAD_FILE_END) {
+    otaUpdateSucceeded = Update.end(true);
+    otaUpdateInProgress = false;
+    Logger::info(otaUpdateSucceeded ? "[OTA] Software erfolgreich geprueft." : "[OTA] Ungueltige Software; bisherige Version bleibt aktiv.");
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
-    Update.abort();
-    Logger::warn("[OTA] Upload abgebrochen.");
+    if (otaUploadAccepted) Update.abort();
+    otaUploadAccepted = false; otaUpdateInProgress = false; otaUpdateSucceeded = false;
+    Logger::warn("[OTA] Uebertragung abgebrochen.");
   }
 }
-
 void handleOtaFinished() {
+  if (!requireActionToken()) return;
   const bool success = otaUpdateSucceeded && !Update.hasError();
-  statusWebServer.send(
-      success ? 200 : 500, "text/html; charset=utf-8",
-      success
-          ? "<!doctype html><html lang='de'><meta charset='utf-8'><body><h2>Update erfolgreich.</h2><p>SolarPilot startet neu...</p></body></html>"
-          : "<!doctype html><html lang='de'><meta charset='utf-8'><body><h2>Update fehlgeschlagen.</h2><p>Die bisherige Firmware bleibt aktiv.</p><p><a href='/update'>Zurueck</a></p></body></html>");
+  statusWebServer.send(success ? 200 : 409, "text/plain; charset=utf-8", success ? "Software installiert. SolarPilot startet neu. Bitte die Seite gleich neu laden." : "Update abgelehnt oder fehlgeschlagen. Bitte das Live-Protokoll prüfen; die bisherige Software bleibt aktiv.");
   otaUpdateInProgress = false;
-  if (success) {
-    delay(500);
-    ESP.restart();
-  }
+  if (success) { delay(500); ESP.restart(); }
 }
-
 void startStatusWebServer() {
   if (statusWebServerStarted || !wifiManager.isConnected()) return;
+  adminToken = String(esp_random(), HEX) + String(esp_random(), HEX) + String(esp_random(), HEX) + String(esp_random(), HEX);
   statusWebServer.on("/", HTTP_GET, handleStatusPage);
   statusWebServer.on("/status", HTTP_GET, handleStatusPage);
-  statusWebServer.on("/update", HTTP_GET, handleOtaPage);
+  statusWebServer.on("/admin", HTTP_GET, handleAdminPage);
+  statusWebServer.on("/api/status", HTTP_GET, handleStatusJson);
+  statusWebServer.on("/api/logs", HTTP_GET, handleLogs);
+  statusWebServer.on("/api/action", HTTP_POST, handleAdminAction);
+  statusWebServer.on("/update", HTTP_GET, handleAdminPage);
   statusWebServer.on("/update", HTTP_POST, handleOtaFinished, handleOtaUpload);
-  statusWebServer.begin();
-  statusWebServerStarted = true;
-  Logger::infof("[WEB] Read-only Status: http://%s/",
-                WiFi.localIP().toString().c_str());
+  statusWebServer.begin(); statusWebServerStarted = true;
+  Logger::infof("[WEB] Uebersicht: http://%s/", WiFi.localIP().toString().c_str());
 }
 
 void logSystemHealth(uint32_t nowMs, bool wifiConnected) {
@@ -817,6 +799,16 @@ void setup() {
 void loop() {
   handleSerialInput();
   if (statusWebServerStarted) statusWebServer.handleClient();
+  if (otaUpdateInProgress && static_cast<uint32_t>(millis() - otaLastActivityMs) > 30000U) {
+    Update.abort(); otaUpdateInProgress = false; otaUploadAccepted = false;
+    Logger::warn("[OTA] Zeitlimit erreicht; Regelung wird fortgesetzt.");
+  }
+  if (webTestActive && static_cast<uint32_t>(millis() - webTestStartedMs) >= webTestDurationMs) {
+    stopAllTests(); Logger::info("[WEB] Testzeit abgelaufen. Tests beendet.");
+  }
+  if (webGoodWeLossPending && surplusSwitchController.isOn()) {
+    endTestMode(); handleSerialCommand("TG", millis()); webGoodWeLossPending = false;
+  }
   if (otaUpdateInProgress) {
     delay(5);
     return;

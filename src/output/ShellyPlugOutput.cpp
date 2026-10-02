@@ -82,6 +82,12 @@ void ShellyPlugOutput::setTestFailureEnabled(bool enabled) {
   testFailureEnabled_ = enabled;
 }
 
+bool ShellyPlugOutput::confirmOff() {
+  // Maintenance must contact the real device even if our cached state is OFF.
+  hasState_ = false;
+  return setState(false);
+}
+
 void ShellyPlugOutput::setHost(const char* host) {
   if (host == nullptr || host[0] == '\0') return;
   host_ = host;
