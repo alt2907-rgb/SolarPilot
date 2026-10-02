@@ -37,10 +37,33 @@ verzögert werden. Physisches AUS benötigt eine erfolgreiche Shelly-Verbindung.
 
 ## Hardwarestatus und nächste Prüfung
 
-PlatformIO erkennt COM4 mit USB VID:PID `303A:1001`. Öffnen des Ports schlug
-innerhalb und außerhalb der Sandbox mit Zugriff verweigert fehl. Keine neuen
-Hardwarelogs erfasst, kein Upload durchgeführt. Ein belegter serieller Port ist
-eine mögliche Ursache, bisher nicht bestätigt.
+PlatformIO erkennt COM4 mit USB VID:PID `303A:1001`. Der zunächst verweigerte
+Zugriff wurde durch eine verbliebene PlatformIO-Monitorprozessgruppe verursacht:
+nach gezieltem Beenden der drei Monitorprozesse ließ sich COM4 öffnen.
+
+Die bisherige Firmware wiederholte mehrere harte WLAN-Neustarts ohne im
+Beobachtungszeitraum wieder verbunden zu werden. Der Upload der Korrektur
+erfolgte erfolgreich mit verifiziertem Flash-Hash. Der folgende Start meldete
+zunächst ebenfalls fehlende WLAN-Verbindung. Bei der späteren Beobachtung am
+2. Oktober 2026 liefen WLAN und echte GoodWe-Messwerte wieder; der genaue
+Zeitpunkt und die Ursache der Wiederkehr wurden nicht aufgezeichnet.
+
+Kontrollierte Tests auf der geänderten Firmware:
+- `TW` aktiviert, länger als 40 Sekunden beobachtet, anschließend deaktiviert:
+  WLAN und GoodWe wiederhergestellt, echte Messwerte, Health `OK`.
+- `T100` bis zum bestätigten Shelly-EIN; anschließend `T-` und `TG` aktiviert:
+  Diagnoseprobes, fünf Fehlerzyklen, GoodWe-Recovery und anschließend
+  Fail-safe-AUS-Anforderung mit bestätigtem `[SHELLY] Steckdose AUS` beobachtet.
+- `TG` deaktiviert und `T-`: echte Messwerte und Health `OK` wiederhergestellt.
+- Alle verwendeten Testmodi sind beendet. Die Powerstation bleibt getrennt.
+
+Die genaue physische Abschaltlatenz wurde nicht vermessen. Der Retry-Fall eines
+nicht bestätigten Shelly-AUS wurde in dieser Testfolge nicht provoziert.
+
+Neue Standort-Evidenz: während der GoodWe-Verlustsimulation lagen die
+WLAN-Pegel wiederholt bei -86 bis -91 dBm. Das ist deutlich schwächer als die
+früher dokumentierten Standorte. Ein gezielter Vergleich näher am AP ist sinnvoll;
+die Beobachtung beweist aber keine alleinige Ursache der spontanen Ausfälle.
 
 Nach Freigabe des Ports zuerst die bestehende Firmware beobachten. Für einen
 kontrollierten Verlusttest: `TW` EIN, 40 Sekunden beobachten, `TW` AUS und
