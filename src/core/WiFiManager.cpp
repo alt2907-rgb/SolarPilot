@@ -8,6 +8,14 @@
 namespace solarpilot::core {
 namespace {
 std::atomic<unsigned> lastDisconnectReason{0};
+void applyRadioSettings() {
+  // The SuperMini AP became visible at this power in the hardware comparison.
+  // Reapply after every driver restart; an OFF/STA cycle resets radio settings.
+  const bool sleepDisabled = WiFi.setSleep(false);
+  const bool powerApplied = WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  Logger::infof("[WLAN-DIAG] Funk: Energiesparen aus=%d, 8.5 dBm gesetzt=%d",
+                sleepDisabled, powerApplied);
+}
 }
 
 bool WiFiManager::connect(const char* ssid, const char* password,
@@ -29,6 +37,7 @@ bool WiFiManager::connect(const char* ssid, const char* password,
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+  applyRadioSettings();
 
   Logger::info("Verbinde mit WLAN...");
   const uint32_t startMs = millis();
@@ -64,6 +73,7 @@ void WiFiManager::restartStation(const char* ssid, const char* password) const {
   delay(100);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+  applyRadioSettings();
 }
 
 void WiFiManager::disconnectForTest() const {

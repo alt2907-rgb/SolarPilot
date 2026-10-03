@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <esp_timer.h>
+#include <atomic>
 
 #include <math.h>
 #include <stdlib.h>
@@ -85,7 +87,7 @@ WebServer statusWebServer(80);
 float latestGridPowerW = 0.0F;
 bool hasLatestGridPower = false;
 bool statusWebServerStarted = false;
-bool otaUpdateInProgress = false;
+std::atomic<bool> otaUpdateInProgress{false};
 bool otaUpdateSucceeded = false;
 uint32_t lastHealthLogMs = 0;
 constexpr uint32_t kHealthLogIntervalMs = 60000U;
@@ -175,7 +177,27 @@ bool webTestActive = false;
 bool webGoodWeLossPending = false;
 uint32_t webTestDurationMs = 120000U;
 bool otaUploadAccepted = false;
-uint32_t otaLastActivityMs = 0;
+std::atomic<uint32_t> otaLastActivityMs{0};
+esp_timer_handle_t otaWatchdog = nullptr;
+bool ensureOtaWatchdog() {
+  if (otaWatchdog != nullptr) return true;
+  esp_timer_create_args_t args{};
+  args.callback = [](void*) {
+    // WebServer's multipart reader can wait inside handleClient indefinitely.
+    // This timer runs independently. No Logger/Update access from this task.
+    // OTA is armed only after confirmed OFF; incomplete images are not selected.
+    if (otaUpdateInProgress.load() &&
+        static_cast<uint32_t>(millis() - otaLastActivityMs.load()) > 30000U) {
+      ESP.restart();
+    }
+  };
+  args.name = "ota-timeout";
+  if (esp_timer_create(&args, &otaWatchdog) != ESP_OK) return false;
+  if (esp_timer_start_periodic(otaWatchdog, 1000000) == ESP_OK) return true;
+  esp_timer_delete(otaWatchdog);
+  otaWatchdog = nullptr;
+  return false;
+}
 String adminToken;
 void handleSerialCommand(const char* command, uint32_t nowMs);
 void endTestMode();
@@ -291,18 +313,25 @@ void handleAdminAction() {
   statusWebServer.send(200, "text/plain; charset=utf-8", "Test gestartet. Automatisches Ende nach spätestens zwei Minuten. Ergebnisse im Live-Protokoll.");
 }
 void handleOtaUpload() {
+  const auto rejectTransport = []() {
+    statusWebServer.send(409, "text/plain; charset=utf-8", "Update abgelehnt. Bitte das Live-Protokoll pruefen.");
+    statusWebServer.client().stop();
+  };
   HTTPUpload& upload = statusWebServer.upload();
   if (upload.status == UPLOAD_FILE_START) {
     otaUploadAccepted = false; otaUpdateSucceeded = false;
-    if (!requireActionToken()) return;
-    if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); return; }
+    // Stop rejected transports too: the multipart parser otherwise continues
+    // consuming the complete body, even though no upload watchdog is armed.
+    if (!requireActionToken()) { statusWebServer.client().stop(); return; }
+    if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); rejectTransport(); return; }
     const bool offConfirmed = stopAllTests(false);
     shellyFailureSimulationEnabled = false;
     shellyPlugOutput.setTestFailureEnabled(false);
-    if (!offConfirmed) { Logger::error("[OTA] Abgelehnt: physisches AUS nicht bestaetigt."); return; }
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) { Logger::error("[OTA] Update konnte nicht gestartet werden."); return; }
-    otaUploadAccepted = true; otaUpdateInProgress = true;
+    if (!offConfirmed) { Logger::error("[OTA] Abgelehnt: physisches AUS nicht bestaetigt."); rejectTransport(); return; }
+    if (!ensureOtaWatchdog()) { Logger::error("[OTA] Abgelehnt: Zeitueberwachung nicht verfuegbar."); rejectTransport(); return; }
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) { Logger::error("[OTA] Update konnte nicht gestartet werden."); rejectTransport(); return; }
     otaLastActivityMs = millis();
+    otaUploadAccepted = true; otaUpdateInProgress = true;
     Logger::info("[OTA] AUS bestaetigt. Softwareuebertragung gestartet.");
   } else if (otaUploadAccepted && upload.status == UPLOAD_FILE_WRITE) {
     otaLastActivityMs = millis();
@@ -473,6 +502,26 @@ void startFailSafeTest() {
 void logWifiLinkDiagnostic() {
   if (WiFi.status() != WL_CONNECTED) {
     Logger::warn("[WIFI-DIAG] WLAN ist aktuell nicht verbunden.");
+    // Manual, disconnected-only scan: keep safety checks around this blocking
+    // diagnostic and never expose credentials or neighbouring network names.
+    surplusSwitchController.noteReadFailure(millis());
+    const int count = WiFi.scanNetworks(false, true);
+    int matches = 0;
+    int strongest = -127;
+    int channel = 0;
+    for (int i = 0; i < count; ++i) {
+      if (WiFi.SSID(i) == AppConfig::kWifiSsid) {
+        ++matches;
+        if (WiFi.RSSI(i) > strongest) {
+          strongest = WiFi.RSSI(i);
+          channel = WiFi.channel(i);
+        }
+      }
+    }
+    WiFi.scanDelete();
+    surplusSwitchController.noteReadFailure(millis());
+    Logger::infof("[WIFI-DIAG] WLAN-Suche: Ergebnis=%d, Ziel-Treffer=%d, bester Pegel=%d dBm, Kanal=%d",
+                  count, matches, strongest, channel);
     return;
   }
 

@@ -112,3 +112,27 @@ AUS-Bestätigung. `--ota` installiert anschließend die lokal gebaute Firmware
 über WLAN und prüft die Erreichbarkeit nach dem Neustart. Dieses Testwerkzeug
 kann Simulationen auslösen und bestätigt AUS; nur ohne Verbraucher verwenden.
 Es liest Zugangsdaten nur aus der lokalen Projektdatei und gibt sie nicht aus.
+
+## Ergänzung 2026-10-03
+
+Die Radioeinstellungen (8,5 dBm, WLAN-Energiesparen aus) werden nun beim
+Verbinden und harten WLAN-Neustart gesetzt. Auf echter Hardware gelangen
+WLAN-Verbindung, GoodWe-Messungen und sämtliche normalen Webprüfungen,
+einschließlich Ablehnung bei fehlender AUS-Bestätigung. Ein späterer Start
+zeigte zunächst Abbruchgrund 202 und danach erfolgreiche Wiederverbindung;
+langfristige Zuverlässigkeit ist damit noch nicht bewiesen.
+
+Große Übertragungen blieben im synchronen Multipart-Empfang hängen. Dessen
+Warteschleife verhindert die bisherige Zeitprüfung im normalen loop().
+Ein unabhängiger Timer startet nach 30 Sekunden ohne Uploadfortschritt neu,
+aber nur für bereits nach bestätigtem AUS akzeptierte Updates. Im seriellen
+Hardwaretest wurden Neustart, erneutes WLAN und GoodWe-Messungen beobachtet.
+Die automatisierte Admin-Wiederkehrprüfung dieses Tests bestand noch nicht;
+der Befund ist deshalb nicht als vollständig bestandener Test einzustufen.
+Abgelehnte Uploads schließen zusätzlich sofort ihre Verbindung, damit auch
+vor Aktivierung des Timers kein unbegrenzter Dateiempfang weiterläuft.
+
+Die AP-Testoberfläche ist noch nicht extern validiert und nicht Bestandteil
+normaler Firmware. Die normale Webansicht ist über die vom Router vergebene
+Adresse erreichbar. Große WLAN-Updates bleiben bis zum erfolgreichen
+abschließenden Hardwaretest offen. PR bleibt Entwurf; kein Produktionsnachweis.
