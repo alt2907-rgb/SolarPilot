@@ -8,9 +8,8 @@ an. Ohne Bestätigung wird der Modus abgelehnt. Während der Einrichtung pausier
 die Regelung; Messwerte gelten nicht als frisch. Der ESP bleibt zehn Minuten
 im Modus, dann stellt er die bisher konfigurierte Verbindung wieder her.
 
-WLAN-Name und individuell zufälliger Zugang stehen nur im angemeldeten
-Einrichtungsbereich, nicht im öffentlichen Status oder Protokoll. Vor dem
-Wechsel mit dem Handy den Zugang notieren. Mit diesem WLAN verbinden und
+Das Einrichtungs-WLAN ist auf ausdrücklichen Nutzerwunsch ohne WLAN-Passwort
+zugänglich. Sein Name steht im angemeldeten Einrichtungsbereich. Mit diesem WLAN verbinden und
 `http://192.168.4.1/admin` öffnen; erneut mit dem Adminzugang anmelden.
 Netze suchen, eines auswählen oder seinen Namen eingeben, Schlüssel verdeckt
 eingeben und Verbindung 30 Sekunden testen. Derselbe Ablauf funktioniert
@@ -36,8 +35,9 @@ Er wird nicht angezeigt, im CSV gespeichert oder protokolliert. Nach Test-
 Ende wird er noch für die mögliche Übernahme vorgehalten; nach Ende des
 Einrichtungsmodus werden eigene String-Kopien bestmöglich überschrieben.
 Framework-/Browser-/Treiberkopien sind nicht garantiert vollständig bereinigt.
-Maskierung ist keine Verschlüsselung. HTTP hat kein TLS. Das WPA2-geschützte
-Einrichtungs-WLAN besitzt einen neuen zufälligen Zugang pro Aktivierung.
+Maskierung ist keine Verschlüsselung. HTTP hat kein TLS. Das Einrichtungs-WLAN
+ist offen; Funkverkehr und eingegebene Heimnetzschlüssel sind dadurch nicht
+durch WLAN-Verschlüsselung geschützt. Dies ist kein sicherer Produktdefault.
 Adminanmeldung und zufällige Aktionskennung schützen sämtliche Mutationen.
 
 Gespeicherte WLAN-Zugangsdaten liegen in NVS. Auf dem Entwicklungsboard ist
@@ -57,7 +57,8 @@ Insbesondere ersetzt dieses Paket noch keine komplette Erstinbetriebnahme.
 Keine automatischen Scans im Regelbetrieb; Suche nur im Einrichtungsmodus.
 Der bestehende synchrone Webserver und dessen Parser-/TLS-Grenzen bleiben
 relevant für spätere Security-Arbeiten. Der sichtbare AP-Key ist nur der
-temporäre Zugang zum Einrichtungs-WLAN, niemals der Heimnetzschlüssel.
+temporäre Zugang zum Einrichtungs-WLAN, niemals der Heimnetzschlüssel. Seit der
+Nutzeränderung ist dieser AP-Key leer und die Oberfläche zeigt „ohne WLAN-Passwort“.
 
 ## Validierung
 
@@ -87,3 +88,8 @@ ergänzt. Nach erneutem Start per authentifizierter Aktion: aktiv, nativer AP
 eingeschaltet, 599 s verbleibend, 8,5 dBm, noch kein Client. Das beweist keinen
 Beaconempfang am Handy; zweiter Sichtbarkeitstest angefragt. Nicht als bestanden
 oder als definitive Ursache des ersten Berichts werten.
+
+Nachfolgender Handybericht: WLAN sichtbar, Adminseite darüber nicht erreichbar.
+Auf Nutzerwunsch Zugang ohne WLAN-Passwort umgesetzt. Build, Web-/OTA-Installation
+und Einrichtungsprüfer (Adminschutz, AUS, Sperren, Scan, Abbruch) bestanden.
+Erreichbarkeit der Adminseite vom Handy bleibt offen.

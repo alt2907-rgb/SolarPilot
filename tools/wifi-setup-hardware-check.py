@@ -31,7 +31,7 @@ check(call('POST','/api/action',auth=auth,data={'command':'wifi-setup','token':'
 check(action('wifi-setup').status_code==200,'Einrichtung nach bestätigtem AUS gestartet')
 try:
     state=call('GET','/api/setup',auth=auth).json()
-    check(state['active'] and len(state['ap_key'])>=12,'Individuell geschütztes Einrichtungs-WLAN aktiv')
+    check(state['active'] and state['ap_key']=='','Einrichtungs-WLAN ohne WLAN-Passwort aktiv')
     status=call('GET','/api/status').json()
     check(not status['on'] and status['test'] and not status['valid'],'Regelung pausiert, Ausgang AUS, kein frischer Regelwert behauptet')
     check(action('cycle').status_code==409,'Schalttests während Einrichtung gesperrt')

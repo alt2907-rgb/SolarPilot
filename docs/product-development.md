@@ -84,3 +84,10 @@ Netzwerksuche, Abbruch, 30-s-Verbindungstest, bewusste Übernahme und Rückkehr
 zu GoodWe bestanden. Normale Web-/OTA-Sicherheit und Historienpersistenz
 erneut geprüft. Browserwartezeiten begrenzt, JavaScript-Syntax geprüft.
 Der Handytest über den echten AP-Funkweg bleibt erforderlich.
+
+2026-10-03: Nutzer bestätigt die Sichtbarkeit des Einrichtungs-WLANs,
+aber die Adminseite darüber ist noch nicht erreichbar. Auf ausdrücklichen
+Wunsch wird das temporäre Netz ohne WLAN-Passwort betrieben. Adminanmeldung,
+Aktionsschutz, bestätigtes AUS und Zehn-Minuten-Limit bleiben erhalten.
+Das offene Funknetz bietet keine Verschlüsselung des HTTP-Verkehrs und ist
+kein endgültiger Produktdefault. Der Handy-Webzugriff bleibt ungeprüft.

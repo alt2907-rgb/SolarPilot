@@ -20,10 +20,9 @@ bool WiFiSetup::start() {
   if (active_) return true;
   char suffix[9]; snprintf(suffix,sizeof(suffix),"%08lx",static_cast<unsigned long>(ESP.getEfuseMac() & 0xFFFFFFFF));
   apName_ = "SolarPilot-" + String(suffix);
-  apPassword_ = String(esp_random(),HEX)+String(esp_random(),HEX);
-  while (apPassword_.length()<12) apPassword_ += '0';
+  wipe(apPassword_);
   WiFi.mode(WIFI_AP_STA);
-  if (!WiFi.softAP(apName_.c_str(),apPassword_.c_str(),1,false,2)) { wipe(apPassword_); return false; }
+  if (!WiFi.softAP(apName_.c_str(),nullptr,1,false,2)) return false;
   radio(); active_=true; closeRequested_=false; startedMs_=millis();
   testing_=tested_=scanning_=false; connectedMs_=drops_=0;
   return true;
