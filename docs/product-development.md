@@ -26,6 +26,7 @@ weiterhin den Nutzer. Eine Freigabe ersetzt keine Hardware-/Verkaufsprüfung.
 | WLAN-Recovery | Implementiert, teilweise geprüft | Kontrollierter Verlust bestanden; spontane Fehler/Langzeit offen |
 | Rechnerlose Langzeitaufzeichnung | Implementiert, Hardware-Grundprüfung bestanden | Flash-Ring, geschützter Export, Neustartpersistenz, 40-s-Offline-Aufzeichnung geprüft; 24-h am Netzteil und Rotation/Stromverlust offen |
 | Einrichtungs-WLAN | Experimentell | Frühere Android-Verbindung; zuverlässige Einrichtung nicht abgeschlossen |
+| Integrierte WLAN-Einrichtung | Implementiert, interne Hardwareprüfungen bestanden | Bestätigtes AUS, begrenzter individueller AP, Suche, 30-s-Test, NVS-Übernahme und Rückkehr geprüft; Handy/AP-Prüfung angefragt, Erstinbetriebnahme/Offline-Recovery offen |
 | Weitere Messquellen | Geplant | Adaptergrenze vorhanden; keine ungeprüften Herstellerzusagen |
 | Herstellerneutrale Messquellengrenze | Implementiert, GoodWe-Hardwareprüfung bestanden | Recovery/Diagnose über gemeinsame Schnittstelle, generischer Systemzustand und Zahlenprüfung; keine zusätzlichen realen Adapter |
 
@@ -70,3 +71,23 @@ endlicher GoodWe-Wert geprüft. Historie bleibt über anschließenden sicheren
 Neustart erhalten; kein Testmodus aktiv. NaN-Injektion für einen künftigen
 Adapter bleibt offen. Umstecken aufs Netzteil ist erst vor dem Schlafengehen
 vorgesehen; vorher darf die Entwicklung weiterlaufen.
+
+## Paket: integrierte WLAN-Einrichtung
+
+Siehe [Einrichtungsablauf und Grenzen](wifi-setup.md). Zunächst bewusst aus
+dem bestehenden Adminbereich gestartet, zehn Minuten begrenzt und mit
+bestätigtem AUS. Heimnetzschlüssel bleibt bis zur ausdrücklichen Übernahme
+temporär; Speicherung erfolgt in NVS, ohne aktivierte Flash-Verschlüsselung.
+Keine vollständige fabrikneue Einrichtung behaupten. Hardwareprüfstand und
+Handy-Nachweis werden ergänzt, sobald tatsächlich durchgeführt. 2026-10-03:
+Netzwerksuche, Abbruch, 30-s-Verbindungstest, bewusste Übernahme und Rückkehr
+zu GoodWe bestanden. Normale Web-/OTA-Sicherheit und Historienpersistenz
+erneut geprüft. Browserwartezeiten begrenzt, JavaScript-Syntax geprüft.
+Der Handytest über den echten AP-Funkweg bleibt erforderlich.
+
+2026-10-03: Nutzer bestätigt die Sichtbarkeit des Einrichtungs-WLANs,
+aber die Adminseite darüber ist noch nicht erreichbar. Auf ausdrücklichen
+Wunsch wird das temporäre Netz ohne WLAN-Passwort betrieben. Adminanmeldung,
+Aktionsschutz, bestätigtes AUS und Zehn-Minuten-Limit bleiben erhalten.
+Das offene Funknetz bietet keine Verschlüsselung des HTTP-Verkehrs und ist
+kein endgültiger Produktdefault. Der Handy-Webzugriff bleibt ungeprüft.

@@ -13,12 +13,14 @@
 
 #include "config/AppConfig.h"
 #include "config/AdminConfig.h"
+#include "config/NetworkSettings.h"
 #include "web/AdminPage.h"
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
 #include "core/DeviceHistory.h"
 #include "core/SystemHealth.h"
 #include "core/WiFiManager.h"
+#include "core/WiFiSetup.h"
 #include "discovery/ShellyDeviceInfo.h"
 #include "discovery/ShellyDiscovery.h"
 #include "inverter/GoodWeClient.h"
@@ -44,6 +46,8 @@ using solarpilot::output::VirtualSocketOutput;
 
 namespace {
 WiFiManager wifiManager;
+solarpilot::config::NetworkSettings networkSettings;
+solarpilot::core::WiFiSetup wifiSetup;
 solarpilot::core::DeviceHistory deviceHistory;
 GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
@@ -229,6 +233,18 @@ bool requireActionToken() {
   }
   return true;
 }
+void handleSetupStatus() {
+  if (!requireAdmin()) return;
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  String state=wifiSetup.statusJson(); state.remove(state.length()-1);
+  state+=",\"stored\":"+String(networkSettings.stored()?"true":"false")+"}";
+  statusWebServer.send(200,"application/json",state);
+}
+void handleSetupNetworks() {
+  if (!requireAdmin()) return;
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.send(200,"application/json",wifiSetup.networksJson());
+}
 void handleStatusPage() {
   statusWebServer.sendHeader("Cache-Control", "no-store");
   statusWebServer.send_P(200, "text/html; charset=utf-8", solarpilot::web::kPage);
@@ -245,7 +261,7 @@ void handleStatusJson() {
   const char* state = health.overall == solarpilot::core::HealthState::kOk ? "In Ordnung" :
       health.overall == solarpilot::core::HealthState::kDegraded ? "Eingeschraenkt" : "Nicht verfuegbar";
   String json = "{\"health\":\"" + String(state) + "\",\"power\":" + String(latestGridPowerW, 1);
-  json += ",\"valid\":" + String(health.hasValidMeasurement && health.lastValidMeasurementAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs && !goodWeLossSimulationEnabled && wifiManager.isConnected() ? "true" : "false");
+  json += ",\"valid\":" + String(health.hasValidMeasurement && health.lastValidMeasurementAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs && !goodWeLossSimulationEnabled && !wifiSetup.active() && wifiManager.isConnected() ? "true" : "false");
   json += ",\"age\":" + (health.hasValidMeasurement ? String(health.lastValidMeasurementAgeMs) : String("null"));
   json += ",\"on\":" + String(surplusSwitchController.isOn() ? "true" : "false");
   json += ",\"real\":" + String(AppConfig::kShellyOutputEnabled ? "true" : "false");
@@ -255,7 +271,7 @@ void handleStatusJson() {
   json += ",\"goodwe\":" + String(inverterReady ? "true" : "false");
   json += ",\"source\":\"" + String(measurementSource.sourceId()) + "\"";
   json += ",\"source_connected\":" + String(inverterReady ? "true" : "false");
-  json += ",\"test\":" + String(testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled ? "true" : "false");
+  json += ",\"test\":" + String(testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled || wifiSetup.active() ? "true" : "false");
   json += ",\"retries\":" + String(measurementSource.totalRetryAttempts());
   json += ",\"timeouts\":" + String(measurementSource.runtimeTimeouts());
   json += ",\"probes\":" + String(networkProbeRuns) + "}";
@@ -305,6 +321,30 @@ bool stopAllTests(bool clearOutputFailure = true) {
 void handleAdminAction() {
   if (!requireActionToken()) return;
   const String command = statusWebServer.arg("command");
+  if (command == "wifi-setup") {
+    if (otaUpdateInProgress.load() || !stopAllTests()) {
+      statusWebServer.send(409,"text/plain","Einrichtung abgelehnt: AUS nicht bestaetigt oder Update aktiv."); return;
+    }
+    measurementSource.resetConnection(); wifiWasConnected=false;
+    const bool started=wifiSetup.start();
+    statusWebServer.send(started?200:503,"text/plain",started?
+      "Einrichtung fuer zehn Minuten aktiv. Zugang steht im Einrichtungsbereich.":"Einrichtungs-WLAN konnte nicht starten."); return;
+  }
+  if (command == "wifi-scan" || command == "wifi-test" || command == "wifi-save" || command == "wifi-cancel") {
+    bool ok=false;
+    if (command=="wifi-scan") ok=wifiSetup.scan();
+    if (command=="wifi-test") ok=wifiSetup.test(statusWebServer.arg("ssid"),statusWebServer.arg("password"));
+    if (command=="wifi-save" && wifiSetup.canSave()) {
+      ok=networkSettings.save(wifiSetup.candidateSsid(),wifiSetup.candidatePassword());
+      if(ok) wifiSetup.requestClose();
+    }
+    if (command=="wifi-cancel" && wifiSetup.active()) { wifiSetup.requestClose(); ok=true; }
+    statusWebServer.send(ok?200:409,"text/plain",ok?
+      "Aktion angenommen. Ergebnis im Einrichtungsbereich pruefen.":"Aktion abgelehnt. Verbindungstest oder Eingaben pruefen."); return;
+  }
+  if (wifiSetup.active() && command != "history-flush") {
+    statusWebServer.send(409,"text/plain","Zuerst die WLAN-Einrichtung beenden."); return;
+  }
   if (command == "history-flush") {
     const bool saved = deviceHistory.flush();
     statusWebServer.send(saved ? 200 : 503, "text/plain; charset=utf-8",
@@ -363,6 +403,7 @@ void handleOtaUpload() {
     // Stop rejected transports too: the multipart parser otherwise continues
     // consuming the complete body, even though no upload watchdog is armed.
     if (!requireActionToken()) { otaEarlyResponseSent = true; statusWebServer.client().stop(); return; }
+    if (wifiSetup.active()) { Logger::warn("[OTA] Abgelehnt: WLAN-Einrichtung aktiv."); rejectTransport(); return; }
     if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); rejectTransport(); return; }
     const bool offConfirmed = stopAllTests(false);
     deviceHistory.flush();
@@ -416,6 +457,8 @@ void startStatusWebServer() {
   statusWebServer.on("/admin", HTTP_GET, handleAdminPage);
   statusWebServer.on("/api/status", HTTP_GET, handleStatusJson);
   statusWebServer.on("/api/logs", HTTP_GET, handleLogs);
+  statusWebServer.on("/api/setup", HTTP_GET, handleSetupStatus);
+  statusWebServer.on("/api/setup/networks", HTTP_GET, handleSetupNetworks);
   statusWebServer.on("/api/history", HTTP_GET, handleHistoryStatus);
   statusWebServer.on("/history.csv", HTTP_GET, handleHistoryExport);
   statusWebServer.on("/api/action", HTTP_POST, handleAdminAction);
@@ -564,7 +607,7 @@ void logWifiLinkDiagnostic() {
     int strongest = -127;
     int channel = 0;
     for (int i = 0; i < count; ++i) {
-      if (WiFi.SSID(i) == AppConfig::kWifiSsid) {
+      if (WiFi.SSID(i) == networkSettings.ssid()) {
         ++matches;
         if (WiFi.RSSI(i) > strongest) {
           strongest = WiFi.RSSI(i);
@@ -587,6 +630,10 @@ void logWifiLinkDiagnostic() {
 }
 
 void handleSerialCommand(const char* command, uint32_t nowMs) {
+  if (strcmp(command,"WC")==0) { wifiSetup.requestClose(); return; }
+  if (wifiSetup.active()) {
+    Logger::warn("[SETUP] Serielle Tests gesperrt. WC beendet die WLAN-Einrichtung."); return;
+  }
   if (strcmp(command, "W") == 0 || strcmp(command, "w") == 0) {
     logWifiLinkDiagnostic();
     return;
@@ -856,6 +903,7 @@ void runShellyDiscoveryOnce() {
 
 void setup() {
   Logger::begin();
+  networkSettings.load(AppConfig::kWifiSsid,AppConfig::kWifiPassword);
   deviceHistory.begin();
   measurementSource.setWaitHook([]() {
     if (testMode == TestMode::kInactive) {
@@ -877,7 +925,7 @@ void setup() {
   }
 
   wifiWasConnected =
-      wifiManager.connect(AppConfig::kWifiSsid, AppConfig::kWifiPassword,
+      wifiManager.connect(networkSettings.ssid(), networkSettings.password(),
                           AppConfig::kWifiConnectTimeoutMs);
   if (!wifiWasConnected) {
     Logger::warn(
@@ -914,18 +962,28 @@ void loop() {
       millis(), AppConfig::kSurplusSwitchFailSafeTimeoutMs);
     const bool valid = health.hasValidMeasurement &&
       health.lastValidMeasurementAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs &&
-      wifi && !goodWeLossSimulationEnabled;
+      wifi && !goodWeLossSimulationEnabled && !wifiSetup.active();
     const uint32_t flags = (valid ? 1U : 0U) | (wifi ? 2U : 0U) |
       (inverterReady ? 4U : 0U) | (surplusSwitchController.isOn() ? 8U : 0U) |
       (surplusSwitchController.isFailSafeShutdownPending() ? 16U : 0U) |
       (surplusSwitchController.hasPendingOutputRetry() ? 32U : 0U) |
       ((testMode != TestMode::kInactive || wifiLossSimulationEnabled ||
-        goodWeLossSimulationEnabled || shellyFailureSimulationEnabled) ? 64U : 0U);
+        goodWeLossSimulationEnabled || shellyFailureSimulationEnabled || wifiSetup.active()) ? 64U : 0U);
     deviceHistory.tick({valid ? latestGridPowerW : 0.0F,
       wifi ? WiFi.RSSI() : 0, flags, measurementSource.runtimeTimeouts()});
   }
   handleSerialInput();
   if (statusWebServerStarted) statusWebServer.handleClient();
+  wifiSetup.tick();
+  if (wifiSetup.active()) {
+    if (wifiSetup.finished()) {
+      delay(300); wifiSetup.close();
+      wifiManager.restartStation(networkSettings.ssid(),networkSettings.password());
+      wifiWasConnected=false; inverterReady=false; wifiLostAtMs=millis();
+      lastWifiReconnectAttemptMs=millis();
+    }
+    delay(5); return;
+  }
   if (otaUpdateInProgress && static_cast<uint32_t>(millis() - otaLastActivityMs) > 30000U) {
     Update.abort(); otaUpdateInProgress = false; otaUploadAccepted = false;
     Logger::warn("[OTA] Zeitlimit erreicht; Regelung wird fortgesetzt.");
@@ -972,7 +1030,7 @@ void loop() {
         ++wifiReconnectAttempts;
         if (wifiReconnectAttempts >= kWifiReconnectAttemptsBeforeRestart) {
           Logger::warn("[RECOVERY] Mehrere WLAN-Reconnects erfolglos; harter WLAN-Neustart.");
-          wifiManager.restartStation(AppConfig::kWifiSsid, AppConfig::kWifiPassword);
+          wifiManager.restartStation(networkSettings.ssid(), networkSettings.password());
           wifiReconnectAttempts = 0;
         } else {
           Logger::info("[RECOVERY] WLAN-Wiederverbindung wird versucht...");
