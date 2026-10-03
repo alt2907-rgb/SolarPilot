@@ -5,6 +5,7 @@
 #include <WebServer.h>
 #include <esp_timer.h>
 #include <atomic>
+#include <LittleFS.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -15,6 +16,7 @@
 #include "web/AdminPage.h"
 #include "control/SurplusSwitchController.h"
 #include "core/Logger.h"
+#include "core/DeviceHistory.h"
 #include "core/SystemHealth.h"
 #include "core/WiFiManager.h"
 #include "discovery/ShellyDeviceInfo.h"
@@ -42,6 +44,7 @@ using solarpilot::output::VirtualSocketOutput;
 
 namespace {
 WiFiManager wifiManager;
+solarpilot::core::DeviceHistory deviceHistory;
 GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
 ConsoleOutput consoleOutput;
@@ -261,6 +264,27 @@ void handleLogs() {
   statusWebServer.sendHeader("Cache-Control", "no-store");
   statusWebServer.send(200, "application/json", "{\"token\":\"" + adminToken + "\",\"entries\":" + Logger::recentJson() + "}");
 }
+void handleHistoryStatus() {
+  if (!requireAdmin()) return;
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.send(200, "application/json", deviceHistory.statusJson());
+}
+void handleHistoryExport() {
+  if (!requireAdmin()) return;
+  const String segment = statusWebServer.arg("segment");
+  if (segment.length() != 1 || segment[0] < '0' || segment[0] > '7') {
+    statusWebServer.send(400, "text/plain", "Segment muss zwischen 0 und 7 liegen."); return;
+  }
+  if (!deviceHistory.ready()) {
+    statusWebServer.send(503, "text/plain", "Aufzeichnungsspeicher nicht verfuegbar."); return;
+  }
+  File file = LittleFS.open(solarpilot::core::DeviceHistory::path(segment[0] - '0'), "r");
+  if (!file) { statusWebServer.send(404, "text/plain", "Dieses Segment ist noch leer."); return; }
+  statusWebServer.sendHeader("Cache-Control", "no-store");
+  statusWebServer.sendHeader("Content-Disposition", "attachment; filename=solarpilot-" + segment + ".csv");
+  statusWebServer.streamFile(file, "text/csv; charset=utf-8");
+  file.close();
+}
 bool stopAllTests(bool clearOutputFailure = true) {
   endTestMode();
   goodWeLossSimulationEnabled = false;
@@ -278,6 +302,13 @@ bool stopAllTests(bool clearOutputFailure = true) {
 void handleAdminAction() {
   if (!requireActionToken()) return;
   const String command = statusWebServer.arg("command");
+  if (command == "history-flush") {
+    const bool saved = deviceHistory.flush();
+    statusWebServer.send(saved ? 200 : 503, "text/plain; charset=utf-8",
+      saved ? "Aufzeichnung gespeichert. Segmente koennen heruntergeladen werden." :
+              "Aufzeichnung konnte nicht gespeichert werden. Speicherstatus pruefen.");
+    return;
+  }
   if (command == "diagnose") {
     logWifiLinkDiagnostic();
     runNetworkPathDiagnostic();
@@ -291,7 +322,7 @@ void handleAdminAction() {
       return;
     }
     statusWebServer.send(200, "text/plain; charset=utf-8", command == "restart" ? "AUS bestätigt. SolarPilot startet neu." : "Alle Tests beendet. Steckdose AUS bestätigt.");
-    if (command == "restart") { delay(300); ESP.restart(); }
+    if (command == "restart") { deviceHistory.flush(); delay(300); ESP.restart(); }
     return;
   }
   if (command != "cycle" && command != "goodwe-loss" && command != "switch-failure" && command != "wifi-loss") {
@@ -331,6 +362,7 @@ void handleOtaUpload() {
     if (!requireActionToken()) { otaEarlyResponseSent = true; statusWebServer.client().stop(); return; }
     if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); rejectTransport(); return; }
     const bool offConfirmed = stopAllTests(false);
+    deviceHistory.flush();
     shellyFailureSimulationEnabled = false;
     shellyPlugOutput.setTestFailureEnabled(false);
     if (!offConfirmed) { Logger::error("[OTA] Abgelehnt: physisches AUS nicht bestaetigt."); rejectTransport(); return; }
@@ -381,6 +413,8 @@ void startStatusWebServer() {
   statusWebServer.on("/admin", HTTP_GET, handleAdminPage);
   statusWebServer.on("/api/status", HTTP_GET, handleStatusJson);
   statusWebServer.on("/api/logs", HTTP_GET, handleLogs);
+  statusWebServer.on("/api/history", HTTP_GET, handleHistoryStatus);
+  statusWebServer.on("/history.csv", HTTP_GET, handleHistoryExport);
   statusWebServer.on("/api/action", HTTP_POST, handleAdminAction);
   statusWebServer.on("/update", HTTP_GET, handleAdminPage);
   statusWebServer.on("/update", HTTP_POST, handleOtaFinished, handleOtaUpload);
@@ -819,6 +853,7 @@ void runShellyDiscoveryOnce() {
 
 void setup() {
   Logger::begin();
+  deviceHistory.begin();
   goodWeClient.setWaitHook([]() {
     if (testMode == TestMode::kInactive) {
       surplusSwitchController.noteReadFailure(millis());
@@ -868,6 +903,24 @@ void setup() {
 }
 
 void loop() {
+  if (!otaUpdateInProgress.load()) {
+    if (testMode == TestMode::kInactive) surplusSwitchController.noteReadFailure(millis());
+    const bool wifi = wifiManager.isConnected() && !wifiLossSimulationEnabled;
+    const auto health = systemHealth.snapshot(wifi, inverterReady,
+      AppConfig::kShellyOutputEnabled, surplusSwitchController.hasPendingOutputRetry(),
+      millis(), AppConfig::kSurplusSwitchFailSafeTimeoutMs);
+    const bool valid = health.hasValidGoodWeReading &&
+      health.lastValidGoodWeAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs &&
+      wifi && !goodWeLossSimulationEnabled;
+    const uint32_t flags = (valid ? 1U : 0U) | (wifi ? 2U : 0U) |
+      (inverterReady ? 4U : 0U) | (surplusSwitchController.isOn() ? 8U : 0U) |
+      (surplusSwitchController.isFailSafeShutdownPending() ? 16U : 0U) |
+      (surplusSwitchController.hasPendingOutputRetry() ? 32U : 0U) |
+      ((testMode != TestMode::kInactive || wifiLossSimulationEnabled ||
+        goodWeLossSimulationEnabled || shellyFailureSimulationEnabled) ? 64U : 0U);
+    deviceHistory.tick({valid ? latestGridPowerW : 0.0F,
+      wifi ? WiFi.RSSI() : 0, flags, goodWeClient.runtimeTimeouts()});
+  }
   handleSerialInput();
   if (statusWebServerStarted) statusWebServer.handleClient();
   if (otaUpdateInProgress && static_cast<uint32_t>(millis() - otaLastActivityMs) > 30000U) {

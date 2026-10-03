@@ -57,7 +57,15 @@ Für bereits freigegebene Arbeit:
 Nicht nach jedem Zwischenschritt Bestätigung verlangen.
 
 ### Freigaben
-Für eine NEUE PRODUKTFUNKTION zuerst Funktion/Wirkung kurz vorschlagen und auf „ja“ warten. Danach zusammengehörige Implementierung, Tests, PR, CI-Fixes und Folgearbeiten selbstständig erledigen.
+
+Aktualisierte Nutzerfreigabe vom 2026-10-03: Neue Produktfunktionen innerhalb
+der beschriebenen SolarPilot-Produktvision dürfen eigenständig umgesetzt
+werden. Ein zusätzliches Ja pro Funktion ist nicht mehr erforderlich.
+Jede Erweiterung muss in docs/product-development.md mit Wirkung, Grenzen,
+Prüfungen und offenen Punkten dokumentiert werden. Die Datenschutzgrenzen,
+Secret-Regeln und getrennte Powerstation bleiben unverändert verbindlich.
+Diese Aktualisierung hat Vorrang vor älteren Ja-Anforderungen in dieser Datei.
+Neue Produktfunktionen kurz ankündigen, dokumentieren und zusammengehörige Implementierung, Tests, PR, CI-Fixes und Folgearbeiten selbstständig erledigen.
 
 Keine neue Freigabe nötig für Bugfixes, Sicherheitskorrekturen, Robustheitsverbesserungen bereits freigegebener Funktionen, Tests, CI-Fixes und dafür notwendiges Refactoring.
 
@@ -258,12 +266,12 @@ Beim ersten Lesen:
 6. Danach nach diesen Workflow-Regeln arbeiten.
 
 ## Aktuelle Nutzergrenzen
-- Freigegebenes Funktionspaket: deutschsprachige Webübersicht, geschützter Adminbereich, begrenztes Live-Protokoll mit Messwerten und Aktionen, erklärte und zeitlich begrenzte Diagnose-/Testfunktionen, sicherer Neustart und WLAN-Updates nur nach physisch bestätigtem AUS. Zugehörige Implementierung, Prüfungen, PR/CI/Merge und Übertragung sind freigegeben. Weitere neue Produktfunktionen benötigen weiterhin ein ausdrückliches Ja.
+- Freigegeben: eigenständige Weiterentwicklung innerhalb der SolarPilot-Produktvision einschließlich neuer Funktionen, mit fortlaufender Dokumentation in docs/product-development.md. Deutschsprachige Webübersicht, geschützter Adminbereich, Live-Protokoll, begrenzte Diagnosefunktionen und sichere Updates bleiben Bestandteil; eigenständige ESP-Langzeitaufzeichnung ist ausdrücklich freigegeben.
 - Genehmigungsanfragen auf Deutsch und für einfache Anwender verständlich formulieren: konkrete Aktion und Zweck nennen, technische Details nur bei Bedarf. Fest vorgegebene App-Texte können davon abweichen.
 - Dateien außerhalb von `C:\Users\alttr\Documents\GitHub\SolarPilot` nur nach ausdrücklicher Erlaubnis des Nutzers lesen. Die Erlaubnis zum Lesen der angehängten Downloads/AGENTS.md gilt nur für diese Datei und deren Übernahme.
 - Dateien außerhalb des Projektordners nicht durchsuchen oder öffnen; notwendige Ausnahmen vorher mit konkretem Pfad und Grund beim Nutzer anfragen.
 - Bekannte Programme außerhalb des Projekts dürfen ausgeführt werden, insbesondere PlatformIO, PowerShell und Git. COM4 darf für Upload und seriellen Monitor verwendet werden. Dies erlaubt keinen Zugriff auf andere persönliche Dateien.
-- Die frühere Einschränkung gegen Codeänderungen und Flashen ist aufgehoben. Bereits freigegebene Bugfixes, Sicherheitskorrekturen, Robustheitsverbesserungen, Diagnosen und Folgearbeiten einschließlich Build, Tests, PR, CI-Fixes, Merge, Flashen und Logauswertung autonom durchführen. Neue Produktfunktionen benötigen vorher ein ausdrückliches Ja.
+- Codeänderungen, neue Produktfunktionen innerhalb der Produktvision und Folgearbeiten einschließlich Build, Tests, PR, CI-Fixes, Merge, Flashen und Logauswertung autonom durchführen und nachvollziehbar dokumentieren.
 - LocalCredentials.h darf für lokale Builds und Hardwaretests verwendet werden; Zugangsdaten niemals ausgeben, protokollieren oder committen.
 - Die Powerstation bleibt physisch vom Shelly getrennt.
 - Diese Grenzen haben Vorrang vor den allgemeinen Autonomie- und Workflow-Regeln dieses Leitfadens.
