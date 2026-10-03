@@ -90,9 +90,16 @@ void DeviceHistory::tick(const HistorySample& s) {
       buffer_.length() > kBufferBytes - 128) flush();
 }
 String DeviceHistory::statusJson() const {
+  String files="[";
+  for(unsigned i=0;i<8;++i) {
+    if(i) files+=',';
+    auto file=ready_?LittleFS.open(path(i),"r"):File();
+    files+="{\"segment\":"+String(i)+",\"bytes\":"+String(file?file.size():0)+"}";
+  }
+  files+=']';
   return "{\"ready\":" + String(ready_ ? "true" : "false") +
     ",\"error\":" + String(failed_ ? "true" : "false") +
     ",\"active\":" + String(active_) + ",\"segments\":8,\"buffered_bytes\":" +
-    String(buffer_.length()) + ",\"dropped\":" + String(dropped_) + "}";
+    String(buffer_.length()) + ",\"dropped\":" + String(dropped_) + ",\"files\":"+files+"}";
 }
 }

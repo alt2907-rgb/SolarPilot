@@ -91,3 +91,27 @@ Wunsch wird das temporäre Netz ohne WLAN-Passwort betrieben. Adminanmeldung,
 Aktionsschutz, bestätigtes AUS und Zehn-Minuten-Limit bleiben erhalten.
 Das offene Funknetz bietet keine Verschlüsselung des HTTP-Verkehrs und ist
 kein endgültiger Produktdefault. Der Handy-Webzugriff bleibt ungeprüft.
+
+Nachfolgend bestätigt der Nutzer den erfolgreichen Adminzugriff über das
+Einrichtungs-WLAN. PR #45 ist nach erfolgreicher CI zusammengeführt.
+
+## Paket: verständliche Geräteoberfläche
+
+Siehe [Bedienaufbau und Grenzen](web-interface.md). Auf Nutzerwunsch wird die
+lange Funktionsliste durch sechs klare Bereiche ersetzt. WLAN erhält drei
+geführte Schritte, Tests bleiben in Wartung bewusst getrennt. Statusverlust,
+Einrichtungs-/Testmodus und Historien-Downloads werden korrekt dargestellt.
+Vorbild sind Bedienprinzipien aus den offiziellen Shelly-/my-PV-Anleitungen;
+SolarPilot besitzt eine eigene Gestaltung. Keine unbelegten Fremdgeräte-
+funktionen oder veränderbaren Schaltregeln behaupten. Prüfung und Hardware-
+installation werden nach Durchführung ergänzt.
+
+2026-10-03: Build erfolgreich (82,8 % Firmwarepartition, 18,4 % statisches RAM).
+Node-Zustandsprüfer bestanden und in CI aufgenommen. Browser-Vorschau auf
+Desktop- und 390-px-Handybreite geprüft; Suche, deduplizierte Netzauswahl,
+Testfortschritt, Ergebnis, Abbruch, echte Dateiauswahl und eigene deutsche
+Bestätigung sichtbar geprüft. Alle Vorschauwerte sind fiktiv.
+Firmware über WLAN installiert; vollständige Web-/OTA-Prüfung bestanden.
+Reale Modus-/Regel-/Dateimetadaten und geschützte Exporte geprüft. Historie
+über sicheren Neustart erhalten; WLAN-Sperren, Scan und Rückkehr bestanden.
+Optische Prüfung der neuen Fassung am Nutzerhandy steht noch aus.

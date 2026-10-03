@@ -93,3 +93,7 @@ Nachfolgender Handybericht: WLAN sichtbar, Adminseite darüber nicht erreichbar.
 Auf Nutzerwunsch Zugang ohne WLAN-Passwort umgesetzt. Build, Web-/OTA-Installation
 und Einrichtungsprüfer (Adminschutz, AUS, Sperren, Scan, Abbruch) bestanden.
 Erreichbarkeit der Adminseite vom Handy bleibt offen.
+
+2026-10-03: Nutzer bestätigt danach die erfolgreiche Anmeldung über das
+Einrichtungs-WLAN („ich bin drin“). Der grundsätzliche Handy-Webzugriff ist
+damit nachgewiesen. Bedienbarkeit und Darstellung werden separat überarbeitet.

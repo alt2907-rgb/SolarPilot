@@ -271,6 +271,13 @@ void handleStatusJson() {
   json += ",\"goodwe\":" + String(inverterReady ? "true" : "false");
   json += ",\"source\":\"" + String(measurementSource.sourceId()) + "\"";
   json += ",\"source_connected\":" + String(inverterReady ? "true" : "false");
+  json += ",\"mode\":\"" + String(wifiSetup.active() ? "setup" :
+      (testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled ? "test" : "normal")) + "\"";
+  json += ",\"rules\":{\"on_w\":" + String(AppConfig::kSurplusSwitchOnThresholdW,0) +
+      ",\"off_w\":" + String(AppConfig::kSurplusSwitchOffThresholdW,0) +
+      ",\"on_seconds\":" + String(AppConfig::kSurplusSwitchOnDelayMs/1000) +
+      ",\"off_seconds\":" + String(AppConfig::kSurplusSwitchOffDelayMs/1000) +
+      ",\"safe_seconds\":" + String(AppConfig::kSurplusSwitchFailSafeTimeoutMs/1000) + "}";
   json += ",\"test\":" + String(testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled || wifiSetup.active() ? "true" : "false");
   json += ",\"retries\":" + String(measurementSource.totalRetryAttempts());
   json += ",\"timeouts\":" + String(measurementSource.runtimeTimeouts());
