@@ -18,6 +18,7 @@ class ShellyPlugOutput final : public ISwitchOutput {
                    uint32_t timeoutMs = 3000);
 
   bool setState(bool isOn) override;
+  bool confirmOff() override;
   void setTestFailureEnabled(bool enabled);
   void setHost(const char* host);
   const char* host() const;

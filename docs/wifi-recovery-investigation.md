@@ -75,3 +75,177 @@ Ein Hard-Recovery-Erfolg darf erst anhand realer Logs mit Neustartmeldung,
 anschließender WLAN-Wiederkehr und wieder erfolgreichen GoodWe-Messungen
 behauptet werden. Keine zusätzlichen automatischen Discovery-Aktivitäten
 einführen.
+
+## Isolierter WLAN-Empfangstest (2026-10-02)
+
+Ein separates Minimalprogramm unter `.local/wifi-scan` wurde per USB gebaut
+und geflasht. Es verwendet keine Zugangsdaten und ruft kein `WiFi.begin()` auf.
+Nur STA-Modus, deaktivierte automatische Wiederverbindung und manuelle Scans.
+Ausgabe enthält ausschließlich Anzahl, RSSI und Kanal, keine Netzwerknamen.
+Mehrere Läufe fanden 4 bis 9 Funknetze, stärkster Empfang -64 bis -68 dBm.
+Damit funktioniert der Scan-/Empfangspfad grundsätzlich. Dies beweist weder
+Sichtbarkeit des konfigurierten Zielnetzes noch erfolgreiche Authentifizierung.
+Anschließend wurde die normale SolarPilot-Firmware wieder übertragen.
+
+## Sendeleistungs-Vergleich (2026-10-02)
+
+Das WPA2-Einrichtungs-WLAN war laut Nutzer am Handy nicht sichtbar, obwohl
+AP-Konfiguration, sichtbare SSID, Kanal 6 und 20 dBm vom Treiber bestätigt wurden.
+Ein reines AP-Minimalprogramm ohne SolarPilot/Webserver auf Kanal 1 und mit
+deaktiviertem Stromsparmodus blieb ebenfalls unsichtbar. Im selben Minimaltest
+wurde ausschließlich die maximale Sendeleistung auf 34 Viertel-dBm (8,5 dBm)
+reduziert; Setzen/Lesen lieferten Erfolg. Danach bestätigte der Nutzer erstmals
+Sichtbarkeit. Das ist Evidenz für eine Abhängigkeit von der Sendeleistung, aber
+kein Beweis der konkreten Hardware-/Versorgungs-/Treiberursache. Empfangsscans
+funktionierten bereits zuvor. STA-Anmeldung und stabiler Betrieb mit reduzierter
+Leistung sind noch zu prüfen. Die separate Testoberfläche übernimmt 8,5 dBm.
+
+## Bereinigter HTTP-Vergleich (2026-10-03)
+
+Offizielles Referenzbeispiel der verwendeten Arduino-Version:
+https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WiFi/examples/WiFiAccessPoint/WiFiAccessPoint.ino
+
+`tools/ap-http-probe` ist ein separater WiFiServer-HTML-Test auf Port 8080,
+Kanal 1, 8,5 dBm, ohne JavaScript, WebServer-Bibliothek, Regler oder Heimnetzkeys.
+Anfragen werden verworfen, niemals ausgegeben; Kopfzeilen sind auf 4096 Bytes
+und drei Sekunden begrenzt. Exakte Content-Length, kurze verzögerte Trennung.
+`B` im seriellen Monitor prüft intern eine vollständige HTTP- und HTML-Antwort.
+Build und Upload erfolgreich. Interner Hardwaretest: 124/124 Kopfzeilenbytes,
+324/324 HTML-Bytes, HTTP 200 und vollständige Testkennung bestätigt.
+Dies validiert nicht die tatsächliche Funkübertragung zum Handy. Externer
+HTML-Aufruf steht noch aus. Der AP-Test endet nach 15 Minuten automatisch.
+
+## Direkte WLAN-Testoberfläche (2026-10-03)
+
+Der Nutzer bestätigte HTML-Zugriff vom Android auf `tools/ap-http-probe`.
+Darauf aufbauend erstellt `tools/wifi-portal` WLAN-Auswahl, verdeckte POST-Eingabe
+und 30-s-Diagnose ohne dauerhafte Zugangsdaten-Speicherung. Keine WebServer-
+Bibliothek, kein JavaScript. Asynchroner Scan, kurze begrenzte HTTP-Anfragen,
+HTML-Escaping, Tokenprüfung, Validierung von SSID und Schlüssellänge.
+Ein frisches millis() nach der HTTP-Verarbeitung verhindert einen vorzeitigen
+Testabschluss durch einen älteren Zeitstempel. 8,5 dBm auch im STA-Test gesetzt.
+Build/Upload erfolgreich. Drei interne Hardwarechecks: HTML 1442/1442 Bytes,
+HTTP 200 und Formular vorhanden; ungültige Testeingabe HTTP 400; übergroße
+Content-Length HTTP 400. Alle Antworten vollständig. Reale WLAN-Anmeldung
+über das Formular steht noch aus; kein Produktionsfreigabe-Nachweis.
+
+## Vollständiger Netzwerkpfad-Vergleich (2026-10-03)
+
+Die normale SolarPilot-Firmware verwendete bisher die Standard-Sendeleistung.
+Mit 8,5 dBm nach WiFi.begin() und nach jedem harten STA-Neustart sowie
+WiFi.setSleep(false) verband sie sich bei diesem Hardwarelauf direkt wieder.
+GoodWe-Messwerte wurden gelesen; öffentliche Übersicht, Digest-Anmeldung,
+Aktionsschutz, begrenzte Logs, ungültiges Update und Updateablehnung bei
+fehlender AUS-Bestätigung bestanden den Hardwaretest. RSSI weiterhin ca.
+-86 bis -88 dBm. Beide Radioeinstellungen wurden gemeinsam geändert; daraus
+folgt kein Nachweis, welche einzeln ausschlaggebend ist, und keine Zusicherung
+langfristiger WLAN-Recovery.
+
+Primärquellen für die Radio-Hypothese:
+- https://www.wemos.cc/en/latest/c3/c3_mini_1_0_0.html
+  (anderes C3-Board, expliziter Hinweis auf 8,5 dBm)
+- https://github.com/sigmdel/supermini_esp32c3_sketches
+  (Vergleich von SuperMini-Platinen mit unterschiedlicher Sendeleistung)
+
+Der Portal-Fehler bleibt separat offen: Bei einem verbundenen Handy wurde
+keine externe TCP-Verbindung angenommen; interne Selbsttests prüfen nur den
+lokalen Stack. Auch der direkte WiFiServer ist betroffen, deshalb ist eine
+alleinige Schuld der WebServer-Bibliothek für diesen AP-Fehler nicht belegt.
+
+Ein großes OTA-Update blieb nach dem bestätigten AUS im Dateiempfang hängen.
+Die Arduino-2.0.17-Implementierung wartet in _uploadReadByte ohne Zeitlimit,
+solange der Client als verbunden gilt. Die bisherige Prüfung nach handleClient
+kann diesen Zustand nicht begrenzen. Ein unabhängiger esp_timer überwacht
+nun atomar die Upload-Aktivität: nach 30 s Stillstand Neustart. Er wird nur
+nach physisch bestätigtem AUS und erfolgreicher Timerinitialisierung aktiviert.
+Unvollständige Images werden nicht als Bootpartition ausgewählt. Logger und
+Update werden nicht aus der Timer-Task aufgerufen.
+Quelle: https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WebServer/src/Parsing.cpp
+
+Setup-Bibliothek WiFiManager wurde als etablierte Alternative geprüft, aber
+nicht eingebunden: deren Speichern/Verbinden-Pfad muss zuerst dem ausdrücklich
+nur temporären Schlüsselgebrauch angepasst werden. Kein blindes Übernehmen
+eines Standardportals mit dauerhafter Speicherung oder Passwort-Debugausgabe.
+
+Beim letzten vollständigen OTA-Versuch antwortete der reale Shelly-AUS-Befehl
+mit HTTP -11 (Timeout). OTA wurde deshalb vor dem Schreiben korrekt abgelehnt.
+Das ist kein erfolgreicher großer Upload und kein erneuter Upload-Hänger.
+Die bisherigen Radioerfolge sind Momentaufnahmen; schlechter RSSI und
+gelegentliche Gerätetimeouts bestehen weiterhin.
+
+## Einzeltests und Testwerkzeugkorrekturen (2026-10-03)
+
+Der vollständige Upload wurde erneut allein geprüft. Normale Web- und
+Sicherheitsprüfungen bestanden; großer Upload endete mit ReadTimeout. Auch
+120 Sekunden Übertragungswartezeit statt 30 Sekunden führten zu ConnectionError.
+Danach war der Admin erreichbar; das Protokoll zeigte einen neuen Bootlauf.
+Mehr Wartezeit im Test ist somit keine ausreichende Lösung.
+
+Der gezielte Teilupload-Test wurde korrigiert: frühe HTTP-Ablehnung erkennen,
+60 Sekunden offen halten (AUS-Bestätigung/Updatevorbereitung berücksichtigen),
+nach Reset eine frische HTTP-/Digest-Sitzung verwenden. Der einzelne Hardwarelauf
+bestand anschließend vollständig: neue Bootkennung und Admin wieder erreichbar.
+Keine gleichzeitigen anderen HTTP-Tests während dieses Laufs.
+
+USB-Diagnose derzeit nicht möglich: COM4 meldet Zugriff verweigert/belegt.
+Für den nächsten großen Upload müssen die seriellen Fortschritts-/Abbruchmeldungen
+beobachtet werden. Keine weiteren identischen Uploadversuche ohne diese Evidenz.
+
+## USB-beobachteter Uploadvergleich
+
+COM4 nach Schließen von Visual Studio Code frei. Normale HTTP-Prüfungen und
+reales AUS bestätigt; Standardupload: erster 1436-Byte-Block vom Updater
+angenommen, danach Stillstand und automatischer Neustart. Separater authentifizierter
+Upload mit 1024-Byte-Blöcken/20-ms-Pausen erreichte 67492 verarbeitete Bytes,
+stockte ebenfalls (Sender TimeoutError), danach Wiederverbindung/GoodWe erfolgreich.
+RSSI etwa -81 bis -88 dBm. Kein gemeldeter Update.write-Schreibfehler; keine
+vollständige Übertragung. Der Wert von Update.write kann gepufferte Daten
+enthalten, daher lautet die Meldung nun verarbeitet statt in Flash geschrieben.
+
+Abbruchgrund 8 und WLAN-Verlust erscheinen im Ablauf des automatischen Neustarts;
+sie beweisen nicht, dass ein Funkabbruch die ursprüngliche Ursache war. WLAN-/
+TCP-Stillstand und Firmware-/Treiberwechselwirkung bleiben zu unterscheiden.
+Nächster notwendiger Referenztest: besserer Empfang am ESP, USB weiter verbunden.
+Kein Wiederholen unveränderter großer Uploads bis dahin.
+
+WiFi.setSleep(false) liefert in Arduino 2.0.17 auch bei bereits deaktiviertem
+Energiesparen false. Die vorherige boolesche Diagnose war deshalb nach hartem
+Neustart irreführend. Konfiguration nun zusätzlich direkt am Treiber gesetzt
+und mit esp_wifi_get_ps überprüft. 8,5 dBm bleiben unverändert.
+Quelle: https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WiFi/src/WiFiGeneric.cpp
+
+## Referenznetz und erfolgreiche OTA-Abschlussprüfung
+
+Die vom Nutzer geänderte lokale WLAN-Konfiguration wurde intern gebaut und
+per USB übertragen; Datei bleibt ignoriert, keine Zugangsdaten protokolliert.
+Neues Netz am selben USB-Standort: -58 dBm statt zuvor etwa -85 dBm, gleiche
+DHCP-IP 192.168.178.194, GoodWe-Messwerte verfügbar. Gedrosselter Vollupload
+vollständig erfolgreich: HTTP 200, Imageprüfung, Neustart, Admin und GoodWe
+wieder verfügbar. Die schwache vorherige Verbindung ist damit ein wesentlicher
+Einfluss; keine Behauptung, alle historischen Ausfälle hätten dieselbe Ursache.
+
+Bei der Ablehnungsprüfung trat zusätzlich eine zweite HTTP-Antwort nach bereits
+gesendeter Ablehnung/Transportende auf. Multipart-Puffer können noch das reguläre
+Ende erreichen, obwohl der Transport gestoppt wurde. otaEarlyResponseSent
+verhindert deshalb erneute Antwort/Authentifizierung im Abschluss-Handler.
+Korrektur gebaut und erfolgreich über WLAN installiert. Danach gesamte normale
+Hardware-Webprüfung einschließlich ungedrosseltem Vollupload erfolgreich bis
+zur bestätigten Imageinstallation; Admin-Wiederkehr wird im Abschluss geprüft.
+Keine heimischen Zugangsdaten oder fremden Netzwerknamen in PR/Commit.
+
+### Abschluss am 2026-10-03
+
+Nach einem Neustart war derselbe konfigurierte Netzname zeitweise über einen
+anderen Zugangspunkt mit etwa -84 bis -87 dBm verbunden. Die Verbindung allein
+belegt deshalb keinen guten Empfang. Vollständige Kanalsuche und Sortierung
+nach Signalstärke werden vor WiFi.begin konfiguriert; keine feste BSSID.
+Auch damit wurde zunächst der schwache Zugangspunkt beobachtet, daher ist
+eine dauerhaft optimale Auswahl noch nicht bewiesen. Eine manuelle Suche bei
+getrenntem WLAN fand einen passenden Zugangspunkt mit -62 dBm. Nach Ende der
+TW-Simulation verband sich der ESP damit; GoodWe erholte sich ebenfalls.
+
+tools/web-hardware-check.py --ota bestand danach vollständig, einschließlich
+echter AUS-Bestätigung, Update-Ablehnung bei simuliertem Schaltfehler,
+ungedrosseltem Vollupload und geschütztem Adminzugang nach Neustart. Nach Boot
+verwendet der Prüfer eine neue HTTP-Sitzung und neue Digest-Anmeldung.
+TW und Schaltfehler-Test sind beendet. Langzeitverhalten bleibt offen.

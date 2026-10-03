@@ -11,6 +11,10 @@ SurplusSwitchController::SurplusSwitchController(
     : config_(config), output_(output) {}
 
 void SurplusSwitchController::update(float gridPowerW, uint32_t nowMs) {
+  if (failSafeShutdownPending_) {
+    noteReadFailure(nowMs);
+    return;
+  }
   hasValidReading_ = true;
   lastValidReadMs_ = nowMs;
   failSafeShutdownPending_ = false;
@@ -71,11 +75,11 @@ bool SurplusSwitchController::hasPendingOutputRetry() const {
 }
 
 void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
-  if (!isOn_ || !hasValidReading_) {
+  if (!failSafeShutdownPending_ && (!isOn_ || !hasValidReading_)) {
     return;
   }
 
-  if (!elapsedSince(lastValidReadMs_, config_.failSafeTimeoutMs, nowMs)) {
+  if (!failSafeShutdownPending_ && !elapsedSince(lastValidReadMs_, config_.failSafeTimeoutMs, nowMs)) {
     return;
   }
 
@@ -92,6 +96,21 @@ void SurplusSwitchController::noteReadFailure(uint32_t nowMs) {
     resetQualificationState();
     failSafeShutdownPending_ = false;
   }
+}
+
+bool SurplusSwitchController::requestConfirmedOff() {
+  failSafeShutdownPending_ = true;
+  resetQualificationState();
+  if (!output_.confirmOff()) {
+    hasFailedOutputRequest_ = true;
+    failedOutputRequestState_ = false;
+    failedOutputRequestMs_ = millis();
+    return false;
+  }
+  isOn_ = false;
+  failSafeShutdownPending_ = false;
+  hasFailedOutputRequest_ = false;
+  return true;
 }
 
 void SurplusSwitchController::resetQualificationState() {

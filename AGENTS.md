@@ -258,6 +258,8 @@ Beim ersten Lesen:
 6. Danach nach diesen Workflow-Regeln arbeiten.
 
 ## Aktuelle Nutzergrenzen
+- Freigegebenes Funktionspaket: deutschsprachige Webübersicht, geschützter Adminbereich, begrenztes Live-Protokoll mit Messwerten und Aktionen, erklärte und zeitlich begrenzte Diagnose-/Testfunktionen, sicherer Neustart und WLAN-Updates nur nach physisch bestätigtem AUS. Zugehörige Implementierung, Prüfungen, PR/CI/Merge und Übertragung sind freigegeben. Weitere neue Produktfunktionen benötigen weiterhin ein ausdrückliches Ja.
+- Genehmigungsanfragen auf Deutsch und für einfache Anwender verständlich formulieren: konkrete Aktion und Zweck nennen, technische Details nur bei Bedarf. Fest vorgegebene App-Texte können davon abweichen.
 - Dateien außerhalb von `C:\Users\alttr\Documents\GitHub\SolarPilot` nur nach ausdrücklicher Erlaubnis des Nutzers lesen. Die Erlaubnis zum Lesen der angehängten Downloads/AGENTS.md gilt nur für diese Datei und deren Übernahme.
 - Dateien außerhalb des Projektordners nicht durchsuchen oder öffnen; notwendige Ausnahmen vorher mit konkretem Pfad und Grund beim Nutzer anfragen.
 - Bekannte Programme außerhalb des Projekts dürfen ausgeführt werden, insbesondere PlatformIO, PowerShell und Git. COM4 darf für Upload und seriellen Monitor verwendet werden. Dies erlaubt keinen Zugriff auf andere persönliche Dateien.

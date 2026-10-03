@@ -11,6 +11,9 @@ class Logger {
   static void warn(const char* message);
   static void error(const char* message);
   static void infof(const char* format, ...);
+  static String recentJson();
+ private:
+  static void write(const char* level, const char* message);
 };
 
 }  // namespace solarpilot::core
