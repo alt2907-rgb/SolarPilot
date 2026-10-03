@@ -2,39 +2,39 @@
 
 namespace solarpilot::core {
 
-void SystemHealth::noteGoodWeReading(uint32_t nowMs) {
-  hasValidGoodWeReading_ = true;
-  lastValidGoodWeReadingMs_ = nowMs;
+void SystemHealth::noteMeasurement(uint32_t nowMs) {
+  hasValidMeasurement_ = true;
+  lastValidMeasurementMs_ = nowMs;
 }
 
-void SystemHealth::setGoodWeFailedCycles(uint32_t cycles) {
-  goodWeFailedCycles_ = cycles;
+void SystemHealth::setSourceFailedCycles(uint32_t cycles) {
+  sourceFailedCycles_ = cycles;
 }
 
 SystemHealthSnapshot SystemHealth::snapshot(
-    bool wifiConnected, bool goodWeConnected, bool shellyOutputEnabled,
+    bool wifiConnected, bool sourceConnected, bool shellyOutputEnabled,
     bool outputRetryPending, uint32_t nowMs, uint32_t staleAfterMs) const {
   const uint32_t ageMs =
-      hasValidGoodWeReading_
-          ? static_cast<uint32_t>(nowMs - lastValidGoodWeReadingMs_)
+      hasValidMeasurement_
+          ? static_cast<uint32_t>(nowMs - lastValidMeasurementMs_)
           : 0;
 
   HealthState overall = HealthState::kOk;
-  if (!wifiConnected || !goodWeConnected || !hasValidGoodWeReading_ ||
-      (hasValidGoodWeReading_ && ageMs >= staleAfterMs)) {
+  if (!wifiConnected || !sourceConnected || !hasValidMeasurement_ ||
+      (hasValidMeasurement_ && ageMs >= staleAfterMs)) {
     overall = HealthState::kUnavailable;
-  } else if (goodWeFailedCycles_ > 0 || outputRetryPending) {
+  } else if (sourceFailedCycles_ > 0 || outputRetryPending) {
     overall = HealthState::kDegraded;
   }
 
   return SystemHealthSnapshot{
       wifiConnected,
-      goodWeConnected,
+      sourceConnected,
       shellyOutputEnabled,
       outputRetryPending,
-      hasValidGoodWeReading_,
+      hasValidMeasurement_,
       ageMs,
-      goodWeFailedCycles_,
+      sourceFailedCycles_,
       overall,
   };
 }

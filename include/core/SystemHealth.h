@@ -8,20 +8,20 @@ enum class HealthState { kOk, kDegraded, kUnavailable };
 
 struct SystemHealthSnapshot {
   bool wifiConnected;
-  bool goodWeConnected;
+  bool sourceConnected;
   bool shellyOutputEnabled;
   bool outputRetryPending;
-  bool hasValidGoodWeReading;
-  uint32_t lastValidGoodWeAgeMs;
-  uint32_t goodWeFailedCycles;
+  bool hasValidMeasurement;
+  uint32_t lastValidMeasurementAgeMs;
+  uint32_t sourceFailedCycles;
   HealthState overall;
 };
 
 class SystemHealth {
  public:
-  void noteGoodWeReading(uint32_t nowMs);
-  void setGoodWeFailedCycles(uint32_t cycles);
-  SystemHealthSnapshot snapshot(bool wifiConnected, bool goodWeConnected,
+  void noteMeasurement(uint32_t nowMs);
+  void setSourceFailedCycles(uint32_t cycles);
+  SystemHealthSnapshot snapshot(bool wifiConnected, bool sourceConnected,
                                 bool shellyOutputEnabled,
                                 bool outputRetryPending,
                                 uint32_t nowMs,
@@ -29,9 +29,9 @@ class SystemHealth {
   static const char* stateToString(HealthState state);
 
  private:
-  bool hasValidGoodWeReading_ = false;
-  uint32_t lastValidGoodWeReadingMs_ = 0;
-  uint32_t goodWeFailedCycles_ = 0;
+  bool hasValidMeasurement_ = false;
+  uint32_t lastValidMeasurementMs_ = 0;
+  uint32_t sourceFailedCycles_ = 0;
 };
 
 }  // namespace solarpilot::core
