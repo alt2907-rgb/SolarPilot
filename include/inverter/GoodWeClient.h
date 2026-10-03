@@ -14,6 +14,9 @@ class GoodWeClient final : public IInverterClient {
   bool connect(const InverterEndpoint& endpoint) override;
   bool readGridPowerW(float& gridPowerW) override;
   void resetConnection();
+  // Runs synchronously on the caller task during network waits; must not
+  // re-enter this client. Allows the controller to enforce its safety deadline.
+  void setWaitHook(void (*hook)()) { waitHook_ = hook; }
 
   uint32_t successfulReads() const { return successfulReads_; }
   uint32_t failedReadCycles() const { return failedReadCycles_; }
@@ -60,7 +63,8 @@ class GoodWeClient final : public IInverterClient {
   uint32_t runtimeTimeouts_;
   uint32_t lastResponseTimeMs_;
   uint32_t maxResponseTimeMs_;
-  uint32_t totalResponseTimeMs_;
+  uint64_t totalResponseTimeMs_;
+  void (*waitHook_)() = nullptr;
 };
 
 }  // namespace solarpilot::inverter
