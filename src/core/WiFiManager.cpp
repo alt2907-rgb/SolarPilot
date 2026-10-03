@@ -1,6 +1,7 @@
 #include "core/WiFiManager.h"
 
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <atomic>
 
 #include "core/Logger.h"
@@ -11,7 +12,12 @@ std::atomic<unsigned> lastDisconnectReason{0};
 void applyRadioSettings() {
   // The SuperMini AP became visible at this power in the hardware comparison.
   // Reapply after every driver restart; an OFF/STA cycle resets radio settings.
-  const bool sleepDisabled = WiFi.setSleep(false);
+  // setSleep(false) returns false when its cached value already equals NONE.
+  // Preserve that setting across events, then verify the actual driver state.
+  WiFi.setSleep(false);
+  wifi_ps_type_t sleepMode = WIFI_PS_MIN_MODEM;
+  const bool sleepDisabled = esp_wifi_set_ps(WIFI_PS_NONE) == ESP_OK &&
+      esp_wifi_get_ps(&sleepMode) == ESP_OK && sleepMode == WIFI_PS_NONE;
   const bool powerApplied = WiFi.setTxPower(WIFI_POWER_8_5dBm);
   Logger::infof("[WLAN-DIAG] Funk: Energiesparen aus=%d, 8.5 dBm gesetzt=%d",
                 sleepDisabled, powerApplied);

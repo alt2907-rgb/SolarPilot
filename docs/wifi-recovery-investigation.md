@@ -190,3 +190,26 @@ Keine gleichzeitigen anderen HTTP-Tests während dieses Laufs.
 USB-Diagnose derzeit nicht möglich: COM4 meldet Zugriff verweigert/belegt.
 Für den nächsten großen Upload müssen die seriellen Fortschritts-/Abbruchmeldungen
 beobachtet werden. Keine weiteren identischen Uploadversuche ohne diese Evidenz.
+
+## USB-beobachteter Uploadvergleich
+
+COM4 nach Schließen von Visual Studio Code frei. Normale HTTP-Prüfungen und
+reales AUS bestätigt; Standardupload: erster 1436-Byte-Block vom Updater
+angenommen, danach Stillstand und automatischer Neustart. Separater authentifizierter
+Upload mit 1024-Byte-Blöcken/20-ms-Pausen erreichte 67492 verarbeitete Bytes,
+stockte ebenfalls (Sender TimeoutError), danach Wiederverbindung/GoodWe erfolgreich.
+RSSI etwa -81 bis -88 dBm. Kein gemeldeter Update.write-Schreibfehler; keine
+vollständige Übertragung. Der Wert von Update.write kann gepufferte Daten
+enthalten, daher lautet die Meldung nun verarbeitet statt in Flash geschrieben.
+
+Abbruchgrund 8 und WLAN-Verlust erscheinen im Ablauf des automatischen Neustarts;
+sie beweisen nicht, dass ein Funkabbruch die ursprüngliche Ursache war. WLAN-/
+TCP-Stillstand und Firmware-/Treiberwechselwirkung bleiben zu unterscheiden.
+Nächster notwendiger Referenztest: besserer Empfang am ESP, USB weiter verbunden.
+Kein Wiederholen unveränderter großer Uploads bis dahin.
+
+WiFi.setSleep(false) liefert in Arduino 2.0.17 auch bei bereits deaktiviertem
+Energiesparen false. Die vorherige boolesche Diagnose war deshalb nach hartem
+Neustart irreführend. Konfiguration nun zusätzlich direkt am Treiber gesetzt
+und mit esp_wifi_get_ps überprüft. 8,5 dBm bleiben unverändert.
+Quelle: https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WiFi/src/WiFiGeneric.cpp

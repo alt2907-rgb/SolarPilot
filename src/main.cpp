@@ -177,6 +177,8 @@ bool webTestActive = false;
 bool webGoodWeLossPending = false;
 uint32_t webTestDurationMs = 120000U;
 bool otaUploadAccepted = false;
+uint32_t otaReceivedBytes = 0;
+uint32_t otaReportedBytes = 0;
 std::atomic<uint32_t> otaLastActivityMs{0};
 esp_timer_handle_t otaWatchdog = nullptr;
 bool ensureOtaWatchdog() {
@@ -320,6 +322,7 @@ void handleOtaUpload() {
   HTTPUpload& upload = statusWebServer.upload();
   if (upload.status == UPLOAD_FILE_START) {
     otaUploadAccepted = false; otaUpdateSucceeded = false;
+    otaReceivedBytes = otaReportedBytes = 0;
     // Stop rejected transports too: the multipart parser otherwise continues
     // consuming the complete body, even though no upload watchdog is armed.
     if (!requireActionToken()) { statusWebServer.client().stop(); return; }
@@ -335,9 +338,17 @@ void handleOtaUpload() {
     Logger::info("[OTA] AUS bestaetigt. Softwareuebertragung gestartet.");
   } else if (otaUploadAccepted && upload.status == UPLOAD_FILE_WRITE) {
     otaLastActivityMs = millis();
+    if (otaReceivedBytes == 0) Logger::infof("[OTA] Erster Datenblock: %u Bytes; freier Heap: %u", upload.currentSize, ESP.getFreeHeap());
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Update.abort(); otaUploadAccepted = false; otaUpdateInProgress = false;
       Logger::error("[OTA] Schreibfehler. Update abgebrochen.");
+    } else {
+      otaReceivedBytes += upload.currentSize;
+      if (otaReportedBytes == 0 || otaReceivedBytes - otaReportedBytes >= 65536U) {
+        otaReportedBytes = otaReceivedBytes;
+        // Update.write may buffer a partial flash sector before writing it.
+        Logger::infof("[OTA] Vom Updater verarbeitet: %lu Bytes", static_cast<unsigned long>(otaReceivedBytes));
+      }
     }
   } else if (otaUploadAccepted && upload.status == UPLOAD_FILE_END) {
     otaUpdateSucceeded = Update.end(true);
@@ -346,7 +357,7 @@ void handleOtaUpload() {
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
     if (otaUploadAccepted) Update.abort();
     otaUploadAccepted = false; otaUpdateInProgress = false; otaUpdateSucceeded = false;
-    Logger::warn("[OTA] Uebertragung abgebrochen.");
+    Logger::infof("[OTA] Uebertragung abgebrochen; verarbeitet: %lu Bytes", static_cast<unsigned long>(otaReceivedBytes));
   }
 }
 void handleOtaFinished() {
