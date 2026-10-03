@@ -78,7 +78,16 @@ void WiFiSetup::close() {
   wipe(password_); wipe(apPassword_); ssid_="";
 }
 String WiFiSetup::statusJson() const {
+  wifi_mode_t mode=WIFI_MODE_NULL;
+  const bool modeRead=esp_wifi_get_mode(&mode)==ESP_OK;
+  const bool apEnabled=modeRead && (mode==WIFI_MODE_AP || mode==WIFI_MODE_APSTA);
+  int8_t power=0; const bool powerRead=esp_wifi_get_max_tx_power(&power)==ESP_OK;
+  const uint32_t elapsed=static_cast<uint32_t>(millis()-startedMs_);
+  const uint32_t remaining=active_ && elapsed<600000U?(600000U-elapsed)/1000U:0U;
   return "{\"active\":"+String(active_?"true":"false")+",\"scanning\":"+String(scanning_?"true":"false")+
+    ",\"ap_enabled\":"+String(apEnabled?"true":"false")+",\"remaining_seconds\":"+String(remaining)+
+    ",\"ap_clients\":"+String(apEnabled?WiFi.softAPgetStationNum():0)+
+    ",\"radio_power_quarter_dbm\":"+String(powerRead?int(power):-1)+
     ",\"testing\":"+String(testing_?"true":"false")+",\"tested\":"+String(tested_?"true":"false")+
     ",\"can_save\":"+String(canSave()?"true":"false")+",\"connected_seconds\":"+String(connectedMs_/1000)+
     ",\"drops\":"+String(drops_)+",\"ap_name\":"+jsonQuote(active_?apName_:String())+

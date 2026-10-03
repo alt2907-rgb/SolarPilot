@@ -79,3 +79,11 @@ geprüft. Ein erster Scan hatte einen vorübergehenden HTTP-Timeout; finaler
 Prüfer wiederholt lesende Anfragen, Browserabfragen besitzen Zeitlimits und
 reduzieren konkurrierende Polls im Einrichtungsmodus. JavaScript-Syntax
 geprüft; optische Handy-/AP-Prüfung ist separat beim Nutzer angefragt.
+
+Erster Handybericht: Netz nicht sichtbar. Direkt danach meldete der ESP den
+Modus als inaktiv; unklar, ob nie gestartet oder inzwischen beendet. Deshalb
+native AP-Modusprüfung, Restlaufzeit, Clientzahl und tatsächliche Sendeleistung
+ergänzt. Nach erneutem Start per authentifizierter Aktion: aktiv, nativer AP
+eingeschaltet, 599 s verbleibend, 8,5 dBm, noch kein Client. Das beweist keinen
+Beaconempfang am Handy; zweiter Sichtbarkeitstest angefragt. Nicht als bestanden
+oder als definitive Ursache des ersten Berichts werten.
