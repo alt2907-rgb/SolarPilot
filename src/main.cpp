@@ -819,6 +819,11 @@ void runShellyDiscoveryOnce() {
 
 void setup() {
   Logger::begin();
+  goodWeClient.setWaitHook([]() {
+    if (testMode == TestMode::kInactive) {
+      surplusSwitchController.noteReadFailure(millis());
+    }
+  });
   delay(200);
   Logger::info("SolarPilot startet...");
   Logger::info(

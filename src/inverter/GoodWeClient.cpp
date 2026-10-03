@@ -52,6 +52,7 @@ bool GoodWeClient::discover(InverterEndpoint& endpoint, uint32_t timeoutMs) {
 
   const uint32_t startMs = millis();
   while ((millis() - startMs) < timeoutMs) {
+    if (waitHook_) waitHook_();
     const int packetSize = udp_.parsePacket();
     if (packetSize <= 0) {
       delay(20);
@@ -117,6 +118,7 @@ GoodWeClient::RuntimeAttemptResult GoodWeClient::requestRuntimeData(
 
   const uint32_t startMs = millis();
   while ((millis() - startMs) < config::AppConfig::kGoodWeRuntimeResponseTimeoutMs) {
+    if (waitHook_) waitHook_();
     const int packetSize = udp_.parsePacket();
     if (packetSize <= 0) {
       delay(20);
@@ -195,7 +197,12 @@ bool GoodWeClient::readGridPowerW(float& gridPowerW) {
   for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
     if (attempt > 1) {
       ++totalRetryAttempts_;
-      delay(config::AppConfig::kGoodWeRuntimeRetryDelayMs);
+      const uint32_t retryStartedMs = millis();
+      while (static_cast<uint32_t>(millis() - retryStartedMs) <
+             config::AppConfig::kGoodWeRuntimeRetryDelayMs) {
+        if (waitHook_) waitHook_();
+        delay(5);
+      }
     }
 
     uint32_t responseTimeMs = 0;
