@@ -15,7 +15,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('url')
 parser.add_argument('--ota', action='store_true')
 args = parser.parse_args()
-sys.excepthook = lambda kind, value, tb: print('Prüfung abgebrochen: ' + kind.__name__ + '. Verbindung und Live-Protokoll prüfen; keine Zugangsdaten werden ausgegeben.', file=sys.stderr)
+def safe_error(kind, value, tb):
+    # Only our own check labels are safe to print. Network exceptions can
+    # contain request URLs with the per-boot action token.
+    detail = str(value) if kind is RuntimeError else kind.__name__
+    print('Prüfung abgebrochen: ' + detail + '. Keine Zugangsdaten werden ausgegeben.', file=sys.stderr)
+sys.excepthook = safe_error
 base = args.url.rstrip('/')
 credentials = Path('include/config/LocalAdminCredentials.h').read_text(encoding='utf-8-sig')
 def constant(name):
@@ -24,7 +29,8 @@ auth = HTTPDigestAuth(constant('kAdminUser'), constant('kAdminPassword'))
 client = requests.Session()
 client.trust_env = False
 def request(method, path, **kwargs):
-    return client.request(method, base + path, timeout=(5, 30), **kwargs)
+    timeout = kwargs.pop('timeout', (5, 30))
+    return client.request(method, base + path, timeout=timeout, **kwargs)
 def check(condition, label):
     if not condition:
         raise RuntimeError('Prüfung fehlgeschlagen: ' + label)
@@ -64,7 +70,10 @@ stop = request('POST', '/api/action', auth=auth, data={'command': 'stop', 'token
 check(stop.status_code == 200, 'Alle Tests beendet und AUS bestätigt')
 if args.ota:
     with Path('.pio/build/esp32-c3-supermini/firmware.bin').open('rb') as firmware:
-        r = request('POST', '/update?token=' + token, auth=auth, files={'firmware': ('firmware.bin', firmware)})
+        # A full image on a slow WiFi link can take longer than small API calls.
+        # Firmware still enforces its independent 30-s inactivity watchdog.
+        r = request('POST', '/update?token=' + token, auth=auth,
+                    files={'firmware': ('firmware.bin', firmware)}, timeout=(5, 120))
     check(r.status_code == 200, 'Gültige Firmware über WLAN installiert')
     deadline = time.monotonic() + 60
     recovered = False

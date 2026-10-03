@@ -136,3 +136,12 @@ Die AP-Testoberfläche ist noch nicht extern validiert und nicht Bestandteil
 normaler Firmware. Die normale Webansicht ist über die vom Router vergebene
 Adresse erreichbar. Große WLAN-Updates bleiben bis zum erfolgreichen
 abschließenden Hardwaretest offen. PR bleibt Entwurf; kein Produktionsnachweis.
+
+### Neuer Hardwareprüfstand
+
+Der korrigierte einzelne Teilupload-Test (`tools/ota-stall-check.py`) bestand:
+nach absichtlich unvollständiger Übertragung neuer Bootlauf und geschützter
+Adminbereich wieder erreichbar. Der Test prüft frühe Ablehnung, wartet genügend
+für AUS-Bestätigung/Vorbereitung und verwendet nach Reset eine frische Sitzung.
+Großer vollständiger Upload bleibt offen; mehr Übertragungswartezeit allein
+behebt ihn nicht. Für die nächste Diagnose wird ein freier COM4 benötigt.

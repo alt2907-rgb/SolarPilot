@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import requests
 from requests.auth import HTTPDigestAuth
 
-sys.excepthook = lambda kind, value, tb: print('Prüfung abgebrochen: ' + kind.__name__, file=sys.stderr)
+sys.excepthook = lambda kind, value, tb: print('Prüfung abgebrochen: ' + (str(value) if kind is RuntimeError else kind.__name__), file=sys.stderr)
 base = sys.argv[1].rstrip('/')
 secret = Path('include/config/LocalAdminCredentials.h').read_text(encoding='utf-8-sig')
 def credential(name):
@@ -33,12 +33,30 @@ authorization = auth.build_digest_header('POST', base + path)
 headers = ('POST ' + path + ' HTTP/1.1\r\nHost: ' + parts.netloc + '\r\nAuthorization: ' + authorization + '\r\nContent-Type: multipart/form-data; boundary=' + boundary + '\r\nContent-Length: ' + str(len(prefix) + len(image) + len(footer)) + '\r\nConnection: close\r\n\r\n').encode()
 with socket.create_connection((parts.hostname, parts.port or 80), timeout=10) as connection:
     connection.sendall(headers + prefix + image[:8192])
-    print('Teilübertragung gestartet; Verbindung bleibt absichtlich offen.', flush=True)
-    time.sleep(35)
+    # Sending bytes does not prove acceptance: OFF/authentication may reject.
+    connection.settimeout(3)
+    try:
+        reply = connection.recv(1024)
+        if reply:
+            match = re.match(rb'HTTP/1\.[01] ([0-9]{3})', reply)
+            code = match.group(1).decode() if match else 'unbekannt'
+            raise RuntimeError('Teilübertragung früh abgelehnt, HTTP ' + code)
+    except socket.timeout:
+        pass
+    print('Teilbytes gesendet; keine frühe Ablehnung. Verbindung bleibt offen.', flush=True)
+    # Allow bounded OFF confirmation/startup before the 30-s inactivity timer.
+    time.sleep(60)
 deadline = time.monotonic() + 55
+# A reset invalidates Digest nonces and existing keep-alive connections.
+# Reconnect with a fresh session instead of reusing the pre-reset transport.
+session.close()
 while time.monotonic() < deadline:
     try:
-        response = session.get(base + '/api/logs', auth=auth, timeout=(2, 5))
+        with requests.Session() as probe:
+            probe.trust_env = False
+            response = probe.get(base + '/api/logs',
+                auth=HTTPDigestAuth(credential('kAdminUser'), credential('kAdminPassword')),
+                timeout=(2, 5))
         response.raise_for_status()
         after = response.json()
         # The boot creates a new action token. Reachability alone is not enough.

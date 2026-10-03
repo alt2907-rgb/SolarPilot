@@ -172,3 +172,21 @@ mit HTTP -11 (Timeout). OTA wurde deshalb vor dem Schreiben korrekt abgelehnt.
 Das ist kein erfolgreicher großer Upload und kein erneuter Upload-Hänger.
 Die bisherigen Radioerfolge sind Momentaufnahmen; schlechter RSSI und
 gelegentliche Gerätetimeouts bestehen weiterhin.
+
+## Einzeltests und Testwerkzeugkorrekturen (2026-10-03)
+
+Der vollständige Upload wurde erneut allein geprüft. Normale Web- und
+Sicherheitsprüfungen bestanden; großer Upload endete mit ReadTimeout. Auch
+120 Sekunden Übertragungswartezeit statt 30 Sekunden führten zu ConnectionError.
+Danach war der Admin erreichbar; das Protokoll zeigte einen neuen Bootlauf.
+Mehr Wartezeit im Test ist somit keine ausreichende Lösung.
+
+Der gezielte Teilupload-Test wurde korrigiert: frühe HTTP-Ablehnung erkennen,
+60 Sekunden offen halten (AUS-Bestätigung/Updatevorbereitung berücksichtigen),
+nach Reset eine frische HTTP-/Digest-Sitzung verwenden. Der einzelne Hardwarelauf
+bestand anschließend vollständig: neue Bootkennung und Admin wieder erreichbar.
+Keine gleichzeitigen anderen HTTP-Tests während dieses Laufs.
+
+USB-Diagnose derzeit nicht möglich: COM4 meldet Zugriff verweigert/belegt.
+Für den nächsten großen Upload müssen die seriellen Fortschritts-/Abbruchmeldungen
+beobachtet werden. Keine weiteren identischen Uploadversuche ohne diese Evidenz.
