@@ -33,3 +33,11 @@ jobs:
 
       - name: Build firmware
         run: platformio run -e esp32-c3-supermini
+
+      - name: Set up Node for browser-state checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check embedded browser states
+        run: node tools/web-ui-check.js
