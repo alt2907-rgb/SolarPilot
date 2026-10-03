@@ -47,6 +47,7 @@ WiFiManager wifiManager;
 solarpilot::core::DeviceHistory deviceHistory;
 GoodWeClient goodWeClient(AppConfig::kGoodWeDiscoveryPort,
                           AppConfig::kGoodWeRuntimePort);
+solarpilot::inverter::IInverterClient& measurementSource = goodWeClient;
 ConsoleOutput consoleOutput;
 VirtualSocketOutput virtualSocketOutput;
 // shellyPlugOutput is constructed unconditionally but only used when
@@ -237,24 +238,26 @@ void handleAdminPage() {
 }
 void handleStatusJson() {
   const uint32_t now = millis();
-  systemHealth.setGoodWeFailedCycles(consecutiveGoodWeFailedCycles);
+  systemHealth.setSourceFailedCycles(consecutiveGoodWeFailedCycles);
   const auto health = systemHealth.snapshot(wifiManager.isConnected(), inverterReady,
       AppConfig::kShellyOutputEnabled, surplusSwitchController.hasPendingOutputRetry(), now,
       AppConfig::kSurplusSwitchFailSafeTimeoutMs);
   const char* state = health.overall == solarpilot::core::HealthState::kOk ? "In Ordnung" :
       health.overall == solarpilot::core::HealthState::kDegraded ? "Eingeschraenkt" : "Nicht verfuegbar";
   String json = "{\"health\":\"" + String(state) + "\",\"power\":" + String(latestGridPowerW, 1);
-  json += ",\"valid\":" + String(health.hasValidGoodWeReading && health.lastValidGoodWeAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs && !goodWeLossSimulationEnabled && wifiManager.isConnected() ? "true" : "false");
-  json += ",\"age\":" + (health.hasValidGoodWeReading ? String(health.lastValidGoodWeAgeMs) : String("null"));
+  json += ",\"valid\":" + String(health.hasValidMeasurement && health.lastValidMeasurementAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs && !goodWeLossSimulationEnabled && wifiManager.isConnected() ? "true" : "false");
+  json += ",\"age\":" + (health.hasValidMeasurement ? String(health.lastValidMeasurementAgeMs) : String("null"));
   json += ",\"on\":" + String(surplusSwitchController.isOn() ? "true" : "false");
   json += ",\"real\":" + String(AppConfig::kShellyOutputEnabled ? "true" : "false");
   json += ",\"pending\":" + String(surplusSwitchController.isFailSafeShutdownPending() ? "true" : "false");
   json += ",\"retry\":" + String(health.outputRetryPending ? "true" : "false");
   json += ",\"rssi\":" + (wifiManager.isConnected() ? String(WiFi.RSSI()) : String("null"));
   json += ",\"goodwe\":" + String(inverterReady ? "true" : "false");
+  json += ",\"source\":\"" + String(measurementSource.sourceId()) + "\"";
+  json += ",\"source_connected\":" + String(inverterReady ? "true" : "false");
   json += ",\"test\":" + String(testMode != TestMode::kInactive || goodWeLossSimulationEnabled || wifiLossSimulationEnabled || shellyFailureSimulationEnabled ? "true" : "false");
-  json += ",\"retries\":" + String(goodWeClient.totalRetryAttempts());
-  json += ",\"timeouts\":" + String(goodWeClient.runtimeTimeouts());
+  json += ",\"retries\":" + String(measurementSource.totalRetryAttempts());
+  json += ",\"timeouts\":" + String(measurementSource.runtimeTimeouts());
   json += ",\"probes\":" + String(networkProbeRuns) + "}";
   statusWebServer.sendHeader("Cache-Control", "no-store");
   statusWebServer.send(200, "application/json", json);
@@ -428,7 +431,7 @@ void logSystemHealth(uint32_t nowMs, bool wifiConnected) {
     return;
   }
   lastHealthLogMs = nowMs;
-  systemHealth.setGoodWeFailedCycles(consecutiveGoodWeFailedCycles);
+  systemHealth.setSourceFailedCycles(consecutiveGoodWeFailedCycles);
   const auto health = systemHealth.snapshot(
       wifiConnected, inverterReady, AppConfig::kShellyOutputEnabled,
       surplusSwitchController.hasPendingOutputRetry(), nowMs,
@@ -438,10 +441,10 @@ void logSystemHealth(uint32_t nowMs, bool wifiConnected) {
       "GoodWe-Fehlerzyklen=%lu | Shelly-Retry=%s",
       SystemHealth::stateToString(health.overall),
       health.wifiConnected ? "OK" : "AUS",
-      health.goodWeConnected ? "OK" : "AUS",
-      health.hasValidGoodWeReading ? "" : "noch keiner / ",
-      static_cast<unsigned long>(health.lastValidGoodWeAgeMs),
-      static_cast<unsigned long>(health.goodWeFailedCycles),
+      health.sourceConnected ? "OK" : "AUS",
+      health.hasValidMeasurement ? "" : "noch keiner / ",
+      static_cast<unsigned long>(health.lastValidMeasurementAgeMs),
+      static_cast<unsigned long>(health.sourceFailedCycles),
       health.outputRetryPending ? "JA" : "NEIN");
 }
 
@@ -480,7 +483,7 @@ bool recoverGoodWe(uint32_t nowMs) {
   }
 
   Logger::info("[RECOVERY] Stelle GoodWe-Verbindung wieder her...");
-  goodWeClient.resetConnection();
+  measurementSource.resetConnection();
 
   // Reuse the last known endpoint once. If communication still fails enough
   // to trigger another recovery, force broadcast discovery instead of
@@ -488,15 +491,15 @@ bool recoverGoodWe(uint32_t nowMs) {
   InverterEndpoint recoveredInverter = inverter;
   if (recoveredInverter.ip != IPAddress(0, 0, 0, 0) &&
       !forceGoodWeDiscoveryOnRecovery &&
-      goodWeClient.connect(recoveredInverter)) {
+      measurementSource.connect(recoveredInverter)) {
     forceGoodWeDiscoveryOnRecovery = true;
     Logger::infof("[RECOVERY] Letzten GoodWe-Endpunkt einmalig wiederverwendet: %s",
                   recoveredInverter.ip.toString().c_str());
   } else {
     Logger::info("[RECOVERY] Suche GoodWe-Wechselrichter per Broadcast...");
-    if (!goodWeClient.discover(recoveredInverter,
+    if (!measurementSource.discover(recoveredInverter,
                                AppConfig::kInverterDiscoveryTimeoutMs) ||
-        !goodWeClient.connect(recoveredInverter)) {
+        !measurementSource.connect(recoveredInverter)) {
       forceGoodWeDiscoveryOnRecovery = true;
       Logger::warn(
           "[RECOVERY] GoodWe noch nicht verfügbar; erneuter Versuch folgt.");
@@ -854,7 +857,7 @@ void runShellyDiscoveryOnce() {
 void setup() {
   Logger::begin();
   deviceHistory.begin();
-  goodWeClient.setWaitHook([]() {
+  measurementSource.setWaitHook([]() {
     if (testMode == TestMode::kInactive) {
       surplusSwitchController.noteReadFailure(millis());
     }
@@ -909,8 +912,8 @@ void loop() {
     const auto health = systemHealth.snapshot(wifi, inverterReady,
       AppConfig::kShellyOutputEnabled, surplusSwitchController.hasPendingOutputRetry(),
       millis(), AppConfig::kSurplusSwitchFailSafeTimeoutMs);
-    const bool valid = health.hasValidGoodWeReading &&
-      health.lastValidGoodWeAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs &&
+    const bool valid = health.hasValidMeasurement &&
+      health.lastValidMeasurementAgeMs < AppConfig::kSurplusSwitchFailSafeTimeoutMs &&
       wifi && !goodWeLossSimulationEnabled;
     const uint32_t flags = (valid ? 1U : 0U) | (wifi ? 2U : 0U) |
       (inverterReady ? 4U : 0U) | (surplusSwitchController.isOn() ? 8U : 0U) |
@@ -919,7 +922,7 @@ void loop() {
       ((testMode != TestMode::kInactive || wifiLossSimulationEnabled ||
         goodWeLossSimulationEnabled || shellyFailureSimulationEnabled) ? 64U : 0U);
     deviceHistory.tick({valid ? latestGridPowerW : 0.0F,
-      wifi ? WiFi.RSSI() : 0, flags, goodWeClient.runtimeTimeouts()});
+      wifi ? WiFi.RSSI() : 0, flags, measurementSource.runtimeTimeouts()});
   }
   handleSerialInput();
   if (statusWebServerStarted) statusWebServer.handleClient();
@@ -953,7 +956,7 @@ void loop() {
       wifiWasConnected = false;
       wifiLostAtMs = nowMs;
       inverterReady = false;
-      goodWeClient.resetConnection();
+      measurementSource.resetConnection();
       Logger::warn("[RECOVERY] WLAN-Verbindung verloren.");
     }
 
@@ -1036,7 +1039,8 @@ void loop() {
 
   float gridPowerW = 0.0F;
   const bool goodWeReadSucceeded =
-      !goodWeLossSimulationEnabled && goodWeClient.readGridPowerW(gridPowerW);
+      !goodWeLossSimulationEnabled && measurementSource.readGridPowerW(gridPowerW) &&
+      isfinite(gridPowerW);
   if (testMode == TestMode::kInactive) {
     // Runtime retries can block for several seconds. Check safety with the
     // current time before accepting a new reading or running diagnostic probes.
@@ -1046,7 +1050,7 @@ void loop() {
       return;
     }
     if (goodWeReadSucceeded) {
-      systemHealth.noteGoodWeReading(millis());
+      systemHealth.noteMeasurement(millis());
       latestGridPowerW = gridPowerW;
       hasLatestGridPower = true;
       consoleOutput.printGridPower(gridPowerW);
@@ -1064,7 +1068,7 @@ void loop() {
             "[RECOVERY] GoodWe-Verbindung nach mehreren vollständig "
             "fehlgeschlagenen Lesezyklen als verloren markiert.");
         inverterReady = false;
-        goodWeClient.resetConnection();
+        measurementSource.resetConnection();
         lastGoodWeRecoveryAttemptMs = 0;
       }
     }

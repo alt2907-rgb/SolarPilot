@@ -13,15 +13,16 @@ class GoodWeClient final : public IInverterClient {
   bool discover(InverterEndpoint& endpoint, uint32_t timeoutMs) override;
   bool connect(const InverterEndpoint& endpoint) override;
   bool readGridPowerW(float& gridPowerW) override;
-  void resetConnection();
+  const char* sourceId() const override { return "goodwe-et"; }
+  void resetConnection() override;
   // Runs synchronously on the caller task during network waits; must not
   // re-enter this client. Allows the controller to enforce its safety deadline.
-  void setWaitHook(void (*hook)()) { waitHook_ = hook; }
+  void setWaitHook(void (*hook)()) override { waitHook_ = hook; }
 
   uint32_t successfulReads() const { return successfulReads_; }
   uint32_t failedReadCycles() const { return failedReadCycles_; }
-  uint32_t totalRetryAttempts() const { return totalRetryAttempts_; }
-  uint32_t runtimeTimeouts() const { return runtimeTimeouts_; }
+  uint32_t totalRetryAttempts() const override { return totalRetryAttempts_; }
+  uint32_t runtimeTimeouts() const override { return runtimeTimeouts_; }
   uint32_t invalidRuntimePackets() const { return invalidRuntimePackets_; }
   uint32_t unexpectedSenderPackets() const { return unexpectedSenderPackets_; }
   uint32_t lastResponseTimeMs() const { return lastResponseTimeMs_; }

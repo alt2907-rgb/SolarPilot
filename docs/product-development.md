@@ -27,6 +27,7 @@ weiterhin den Nutzer. Eine Freigabe ersetzt keine Hardware-/Verkaufsprüfung.
 | Rechnerlose Langzeitaufzeichnung | Implementiert, Hardware-Grundprüfung bestanden | Flash-Ring, geschützter Export, Neustartpersistenz, 40-s-Offline-Aufzeichnung geprüft; 24-h am Netzteil und Rotation/Stromverlust offen |
 | Einrichtungs-WLAN | Experimentell | Frühere Android-Verbindung; zuverlässige Einrichtung nicht abgeschlossen |
 | Weitere Messquellen | Geplant | Adaptergrenze vorhanden; keine ungeprüften Herstellerzusagen |
+| Herstellerneutrale Messquellengrenze | Implementiert, GoodWe-Hardwareprüfung bestanden | Recovery/Diagnose über gemeinsame Schnittstelle, generischer Systemzustand und Zahlenprüfung; keine zusätzlichen realen Adapter |
 
 ## Nächste Reihenfolge
 
@@ -57,3 +58,15 @@ Bestätigung jedes physischen Relaisvorgangs. Export nur nach Admin-Anmeldung.
 Formatierung darf vorhandene oder beschädigte Daten nicht stillschweigend
 löschen. Start einer 24-h-Phase am Netzteil und deren tatsächlicher Ausgang
 werden erst nach realem Test als bestanden dokumentiert.
+
+## Paket: gemeinsame Messquellengrenze
+
+Siehe [Messquellenvertrag](measurement-sources.md). Herstellerunabhängige
+Regelung und Systemzustände erhalten eine einheitliche Netzleistungssemantik.
+Der erste Adapter bleibt GoodWe ET. Bestehende CSV-Flags und das bisherige
+Statusfeld bleiben kompatibel; neue Schnittstellenfelder benennen die Quelle.
+2026-10-03: Build, vollständige Web-/OTA-Prüfung, Quellenstatus und frischer
+endlicher GoodWe-Wert geprüft. Historie bleibt über anschließenden sicheren
+Neustart erhalten; kein Testmodus aktiv. NaN-Injektion für einen künftigen
+Adapter bleibt offen. Umstecken aufs Netzteil ist erst vor dem Schlafengehen
+vorgesehen; vorher darf die Entwicklung weiterlaufen.
