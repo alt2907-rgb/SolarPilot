@@ -145,3 +145,20 @@ Adminbereich wieder erreichbar. Der Test prüft frühe Ablehnung, wartet genüge
 für AUS-Bestätigung/Vorbereitung und verwendet nach Reset eine frische Sitzung.
 Großer vollständiger Upload bleibt offen; mehr Übertragungswartezeit allein
 behebt ihn nicht. Für die nächste Diagnose wird ein freier COM4 benötigt.
+
+### Abschlusstest im Referenznetz
+
+Nach intern gebauter, vom Nutzer geänderter lokaler WLAN-Konfiguration betrug
+der Empfang -58 dBm. Vollständige Imageübertragung, Prüfung, Installation und
+Wiederkehr des Adminbereichs gelangen. Eine doppelte Antwort bei bereits
+abgelehntem Upload wurde verhindert; auch der normale, ungedrosselte Upload
+besteht danach die Prüfung bis zur bestätigten Imageinstallation. Dieser
+Hardwarebefund ergänzt die früheren Fehlerstände; Langzeitstabilität und
+optische Browserprüfung sind damit nicht automatisch nachgewiesen.
+
+Abschluss 2026-10-03: `tools/web-hardware-check.py --ota` vollständig bestanden,
+einschließlich ungedrosseltem Vollupload und Admin-Anmeldung nach Neustart.
+Der Prüfer verwirft dafür alte TCP-Verbindungen und Digest-Anmeldedaten.
+WLAN-Suche und Wiederverbindung gelangten zu einem passenden Zugangspunkt mit
+-62 dBm; zuvor war derselbe Netzname zeitweise mit deutlich schlechterem
+Empfang verbunden. Dauerhaft optimale AP-Auswahl bleibt zu beobachten.

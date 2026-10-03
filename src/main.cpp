@@ -177,6 +177,7 @@ bool webTestActive = false;
 bool webGoodWeLossPending = false;
 uint32_t webTestDurationMs = 120000U;
 bool otaUploadAccepted = false;
+bool otaEarlyResponseSent = false;
 uint32_t otaReceivedBytes = 0;
 uint32_t otaReportedBytes = 0;
 std::atomic<uint32_t> otaLastActivityMs{0};
@@ -316,16 +317,18 @@ void handleAdminAction() {
 }
 void handleOtaUpload() {
   const auto rejectTransport = []() {
+    otaEarlyResponseSent = true;
     statusWebServer.send(409, "text/plain; charset=utf-8", "Update abgelehnt. Bitte das Live-Protokoll pruefen.");
     statusWebServer.client().stop();
   };
   HTTPUpload& upload = statusWebServer.upload();
   if (upload.status == UPLOAD_FILE_START) {
     otaUploadAccepted = false; otaUpdateSucceeded = false;
+    otaEarlyResponseSent = false;
     otaReceivedBytes = otaReportedBytes = 0;
     // Stop rejected transports too: the multipart parser otherwise continues
     // consuming the complete body, even though no upload watchdog is armed.
-    if (!requireActionToken()) { statusWebServer.client().stop(); return; }
+    if (!requireActionToken()) { otaEarlyResponseSent = true; statusWebServer.client().stop(); return; }
     if (!upload.filename.endsWith(".bin")) { Logger::warn("[OTA] Abgelehnt: Datei muss auf .bin enden."); rejectTransport(); return; }
     const bool offConfirmed = stopAllTests(false);
     shellyFailureSimulationEnabled = false;
@@ -361,6 +364,9 @@ void handleOtaUpload() {
   }
 }
 void handleOtaFinished() {
+  // Buffered multipart bytes can still complete parsing after transport.stop().
+  // Do not send a second response on a rejected/already closed connection.
+  if (otaEarlyResponseSent) return;
   if (!requireActionToken()) return;
   const bool success = otaUpdateSucceeded && !Update.hasError();
   statusWebServer.send(success ? 200 : 409, "text/plain; charset=utf-8", success ? "Software installiert. SolarPilot startet neu. Bitte die Seite gleich neu laden." : "Update abgelehnt oder fehlgeschlagen. Bitte das Live-Protokoll prüfen; die bisherige Software bleibt aktiv.");

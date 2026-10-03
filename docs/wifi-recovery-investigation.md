@@ -213,3 +213,39 @@ Energiesparen false. Die vorherige boolesche Diagnose war deshalb nach hartem
 Neustart irreführend. Konfiguration nun zusätzlich direkt am Treiber gesetzt
 und mit esp_wifi_get_ps überprüft. 8,5 dBm bleiben unverändert.
 Quelle: https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WiFi/src/WiFiGeneric.cpp
+
+## Referenznetz und erfolgreiche OTA-Abschlussprüfung
+
+Die vom Nutzer geänderte lokale WLAN-Konfiguration wurde intern gebaut und
+per USB übertragen; Datei bleibt ignoriert, keine Zugangsdaten protokolliert.
+Neues Netz am selben USB-Standort: -58 dBm statt zuvor etwa -85 dBm, gleiche
+DHCP-IP 192.168.178.194, GoodWe-Messwerte verfügbar. Gedrosselter Vollupload
+vollständig erfolgreich: HTTP 200, Imageprüfung, Neustart, Admin und GoodWe
+wieder verfügbar. Die schwache vorherige Verbindung ist damit ein wesentlicher
+Einfluss; keine Behauptung, alle historischen Ausfälle hätten dieselbe Ursache.
+
+Bei der Ablehnungsprüfung trat zusätzlich eine zweite HTTP-Antwort nach bereits
+gesendeter Ablehnung/Transportende auf. Multipart-Puffer können noch das reguläre
+Ende erreichen, obwohl der Transport gestoppt wurde. otaEarlyResponseSent
+verhindert deshalb erneute Antwort/Authentifizierung im Abschluss-Handler.
+Korrektur gebaut und erfolgreich über WLAN installiert. Danach gesamte normale
+Hardware-Webprüfung einschließlich ungedrosseltem Vollupload erfolgreich bis
+zur bestätigten Imageinstallation; Admin-Wiederkehr wird im Abschluss geprüft.
+Keine heimischen Zugangsdaten oder fremden Netzwerknamen in PR/Commit.
+
+### Abschluss am 2026-10-03
+
+Nach einem Neustart war derselbe konfigurierte Netzname zeitweise über einen
+anderen Zugangspunkt mit etwa -84 bis -87 dBm verbunden. Die Verbindung allein
+belegt deshalb keinen guten Empfang. Vollständige Kanalsuche und Sortierung
+nach Signalstärke werden vor WiFi.begin konfiguriert; keine feste BSSID.
+Auch damit wurde zunächst der schwache Zugangspunkt beobachtet, daher ist
+eine dauerhaft optimale Auswahl noch nicht bewiesen. Eine manuelle Suche bei
+getrenntem WLAN fand einen passenden Zugangspunkt mit -62 dBm. Nach Ende der
+TW-Simulation verband sich der ESP damit; GoodWe erholte sich ebenfalls.
+
+tools/web-hardware-check.py --ota bestand danach vollständig, einschließlich
+echter AUS-Bestätigung, Update-Ablehnung bei simuliertem Schaltfehler,
+ungedrosseltem Vollupload und geschütztem Adminzugang nach Neustart. Nach Boot
+verwendet der Prüfer eine neue HTTP-Sitzung und neue Digest-Anmeldung.
+TW und Schaltfehler-Test sind beendet. Langzeitverhalten bleibt offen.

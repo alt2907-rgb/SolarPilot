@@ -9,6 +9,12 @@
 namespace solarpilot::core {
 namespace {
 std::atomic<unsigned> lastDisconnectReason{0};
+void configureStationSelection() {
+  // FAST_SCAN stops at the first matching SSID, even if another mesh AP is
+  // much stronger. Let the driver compare candidates only when connecting.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+}
 void applyRadioSettings() {
   // The SuperMini AP became visible at this power in the hardware comparison.
   // Reapply after every driver restart; an OFF/STA cycle resets radio settings.
@@ -42,6 +48,7 @@ bool WiFiManager::connect(const char* ssid, const char* password,
   }
 
   WiFi.mode(WIFI_STA);
+  configureStationSelection();
   WiFi.begin(ssid, password);
   applyRadioSettings();
 
@@ -78,6 +85,7 @@ void WiFiManager::restartStation(const char* ssid, const char* password) const {
   WiFi.mode(WIFI_OFF);
   delay(100);
   WiFi.mode(WIFI_STA);
+  configureStationSelection();
   WiFi.begin(ssid, password);
   applyRadioSettings();
 }

@@ -75,6 +75,11 @@ if args.ota:
         r = request('POST', '/update?token=' + token, auth=auth,
                     files={'firmware': ('firmware.bin', firmware)}, timeout=(5, 120))
     check(r.status_code == 200, 'Gültige Firmware über WLAN installiert')
+    # A boot invalidates both cached Digest nonces and pooled TCP connections.
+    client.close()
+    client = requests.Session()
+    client.trust_env = False
+    auth = HTTPDigestAuth(constant('kAdminUser'), constant('kAdminPassword'))
     deadline = time.monotonic() + 60
     recovered = False
     while time.monotonic() < deadline:
